@@ -1,5 +1,5 @@
 import { demanderPersistance, ecrireEtatBase, lireEtatBase, lireImages, nettoyerImages } from "./base";
-import { nouvelId, scenarioExemple } from "./fabrique";
+import { ID_EXEMPLE, nouvelId, scenarioExemple } from "./fabrique";
 import type { Etape, Lieu, Scenario } from "./types";
 
 /* Où vivent les scénarios.
@@ -23,6 +23,8 @@ export const ID_VISITE = "donnees-visite";
 export interface Etat {
   scenarios: Scenario[];
   actif: string | null;
+  /** Vrai quand on a supprimé le scénario d'exemple intégré : il ne revient pas tout seul. */
+  exempleRetire?: boolean;
 }
 
 /** Photos par identifiant, en data URL (JPEG). */
@@ -54,9 +56,20 @@ function normaliserEtat(brut: unknown): EtatDate | null {
   if (!brut || typeof brut !== "object") return null;
   const e = brut as Partial<EtatDate>;
   const scenarios = (Array.isArray(e.scenarios) ? e.scenarios : []).map(normaliserScenario).filter((s): s is Scenario => s != null);
-  if (scenarios.length === 0) return null;
-  const actif = scenarios.some((s) => s.id === e.actif) ? e.actif! : scenarios[0]!.id;
-  return { scenarios, actif, sauveLe: typeof e.sauveLe === "number" ? e.sauveLe : 0 };
+  const exempleRetire = e.exempleRetire === true;
+  // Sans scénario, la mémoire n'a de sens que si l'exemple a été retiré exprès.
+  if (scenarios.length === 0 && !exempleRetire) return null;
+  const actif = scenarios.some((s) => s.id === e.actif) ? e.actif! : (scenarios[0]?.id ?? null);
+  return { scenarios, actif, exempleRetire, sauveLe: typeof e.sauveLe === "number" ? e.sauveLe : 0 };
+}
+
+/**
+ * Le scénario d'exemple fait partie du carnet : il est ajouté en tête de
+ * liste s'il manque, sauf si on l'a supprimé exprès.
+ */
+export function avecExemple(etat: Etat): Etat {
+  if (etat.exempleRetire || etat.scenarios.some((s) => s.id === ID_EXEMPLE)) return etat;
+  return { ...etat, scenarios: [scenarioExemple(), ...etat.scenarios], actif: etat.actif ?? ID_EXEMPLE };
 }
 
 /** Identifiants des photos utilisées par une liste de scénarios. */
@@ -84,14 +97,13 @@ export async function charger(): Promise<Chargement> {
   const base = normaliserEtat(await lireEtatBase(cle));
   // La plus récente des deux mémoires l'emporte.
   const memoire = base && (!local || base.sauveLe >= local.sauveLe) ? base : local;
-  const etat: Etat = memoire
-    ? { scenarios: memoire.scenarios, actif: memoire.actif }
-    : copie
-      ? { scenarios: copie.scenarios, actif: copie.actif }
-      : (() => {
-          const exemple = scenarioExemple();
-          return { scenarios: [exemple], actif: exemple.id };
-        })();
+  const etat: Etat = avecExemple(
+    memoire
+      ? { scenarios: memoire.scenarios, actif: memoire.actif, exempleRetire: memoire.exempleRetire }
+      : copie
+        ? { scenarios: copie.scenarios, actif: copie.actif }
+        : { scenarios: [], actif: ID_EXEMPLE },
+  );
   const images = await lireImages(imagesUtilisees(etat.scenarios));
   demanderPersistance();
   void nettoyerImages((etats) => imagesUtilisees(etats.flatMap((x) => normaliserEtat(x)?.scenarios ?? [])));

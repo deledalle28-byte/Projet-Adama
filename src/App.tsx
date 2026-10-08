@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ecrireImages } from "./domaine/base";
 import { calculerChronologie } from "./domaine/calcul";
 import { exporterVisite } from "./domaine/exportVisite";
-import { dupliquerScenario, nouveauScenario, scenarioExemple } from "./domaine/fabrique";
+import { dupliquerScenario, ID_EXEMPLE, nouveauScenario, scenarioExemple } from "./domaine/fabrique";
 import { preparerImage } from "./domaine/images";
 import { charger, exporterJson, importerJson, imagesUtilisees, sauver, type Chargement, type Etat, type Images } from "./domaine/stockage";
 import type { ImageEtape, Scenario } from "./domaine/types";
@@ -51,7 +51,7 @@ function Carnet({ init }: { init: Chargement }) {
   const actif = etat.scenarios.find((s) => s.id === etat.actif) ?? etat.scenarios[0] ?? null;
   const chrono = useMemo(() => (actif ? calculerChronologie(actif) : null), [actif]);
 
-  const ajouter = useCallback((s: Scenario) => setEtat((e) => ({ scenarios: [...e.scenarios, s], actif: s.id })), []);
+  const ajouter = useCallback((s: Scenario) => setEtat((e) => ({ ...e, scenarios: [...e.scenarios, s], actif: s.id })), []);
 
   /** Range des photos (déjà préparées) dans la mémoire du navigateur et dans l'état. */
   const rangerImages = useCallback(async (nouvelles: Images) => {
@@ -100,14 +100,23 @@ function Carnet({ init }: { init: Chargement }) {
     creer: () => ajouter(nouveauScenario()),
     exemple: () => {
       void rangerImages(PHOTOS_EXEMPLE);
-      ajouter(scenarioExemple());
+      setEtat((e) =>
+        e.scenarios.some((s) => s.id === ID_EXEMPLE)
+          ? { ...e, actif: ID_EXEMPLE }
+          : { ...e, exempleRetire: false, scenarios: [scenarioExemple(), ...e.scenarios], actif: ID_EXEMPLE },
+      );
     },
     dupliquer: () => actif && ajouter(dupliquerScenario(actif)),
     supprimer: () => {
-      if (!actif || !window.confirm(`Supprimer le scénario « ${actif.nom} » ?`)) return;
+      if (!actif) return;
+      const estExemple = actif.id === ID_EXEMPLE;
+      const question = estExemple
+        ? "Supprimer le scénario d'exemple ? Tu pourras le remettre avec « Remettre le scénario d'exemple »."
+        : `Supprimer le scénario « ${actif.nom} » ?`;
+      if (!window.confirm(question)) return;
       setEtat((e) => {
         const scenarios = e.scenarios.filter((s) => s.id !== actif.id);
-        return { scenarios, actif: scenarios[0]?.id ?? null };
+        return { ...e, scenarios, actif: scenarios[0]?.id ?? null, exempleRetire: e.exempleRetire || estExemple };
       });
     },
     importer: (f) => {

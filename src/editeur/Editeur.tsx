@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { CheckCircle2, Copy, Download, FileDown, FileUp, Play, Plus, Sparkles, Trash2, TriangleAlert, Undo2 } from "lucide-react";
 import { calculerChronologie, type Chronologie } from "../domaine/calcul";
-import { nouvelleEtape } from "../domaine/fabrique";
+import { ID_EXEMPLE, nouvelleEtape } from "../domaine/fabrique";
 import { trouverLieu } from "../domaine/lieux";
 import type { Etat } from "../domaine/stockage";
 import { dateAvecAnnee, dateCourte, heureLocale } from "../domaine/temps";
@@ -127,7 +127,7 @@ function ListeScenarios({ etat, actions }: { etat: Etat; actions: ActionsEditeur
         const c = calculerChronologie(s);
         const date = c.depart && c.debut ? dateCourte(c.debut, c.depart.fuseau) : "date à préciser";
         const duree = c.segments.length > 0 ? ` · ${c.totaux.jours} j` : "";
-        return { id: s.id, nom: s.nom || "Sans titre", sous: `${date}${duree}` };
+        return { id: s.id, nom: s.nom || "Sans titre", sous: `${date}${duree}`, exemple: s.id === ID_EXEMPLE };
       }),
     [etat.scenarios],
   );
@@ -152,20 +152,25 @@ function ListeScenarios({ etat, actions }: { etat: Etat; actions: ActionsEditeur
                 }`}
               >
                 <span className="block truncate text-sm font-semibold">{r.nom}</span>
-                <span className="block text-xs text-slate-500">{r.sous}</span>
+                <span className="flex items-center gap-1.5 text-xs text-slate-500">
+                  {r.exemple && <span className="rounded-full bg-or/15 px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide text-or-fonce">Exemple</span>}
+                  {r.sous}
+                </span>
               </button>
             </li>
           );
         })}
       </ul>
-      <button
-        type="button"
-        onClick={actions.exemple}
-        className="inline-flex items-center gap-1.5 px-1 text-xs font-medium text-or-fonce hover:underline"
-        title="Ajoute l'Omra d'exemple, avec ses photos, pour voir ce que donne une visite complète"
-      >
-        <Sparkles className="h-3.5 w-3.5" /> Ajouter le scénario d'exemple
-      </button>
+      {!resumes.some((r) => r.exemple) && (
+        <button
+          type="button"
+          onClick={actions.exemple}
+          className="inline-flex items-center gap-1.5 px-1 text-xs font-medium text-or-fonce hover:underline"
+          title="Remet l'Omra d'exemple, avec ses photos, pour voir ce que donne une visite complète"
+        >
+          <Sparkles className="h-3.5 w-3.5" /> Remettre le scénario d'exemple
+        </button>
+      )}
       {etat.actif && (
         <div className="grid grid-cols-2 gap-1.5 border-t border-[#E7E1D6] pt-3">
           <button type="button" className="bouton text-xs" onClick={actions.dupliquer} title="Crée une variante à modifier (ex. escale plus longue)">

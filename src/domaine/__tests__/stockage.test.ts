@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { scenarioExemple } from "../fabrique";
-import { imagesDuScenario, imagesUtilisees, importerJson, normaliserScenario } from "../stockage";
+import { ID_EXEMPLE, nouveauScenario, scenarioExemple } from "../fabrique";
+import { avecExemple, imagesDuScenario, imagesUtilisees, importerJson, normaliserScenario } from "../stockage";
 
 const PIXEL = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ==";
 
@@ -54,5 +54,26 @@ describe("photos des étapes", () => {
     const { scenario, images } = await importerJson(new File([JSON.stringify(v1)], "v1.json"));
     expect(scenario.etapes.length).toBe(13);
     expect(images.size).toBe(0);
+  });
+});
+
+describe("scénario d'exemple intégré", () => {
+  it("est ajouté en tête quand il manque", () => {
+    const perso = nouveauScenario();
+    const etat = avecExemple({ scenarios: [perso], actif: perso.id });
+    expect(etat.scenarios.map((s) => s.id)).toEqual([ID_EXEMPLE, perso.id]);
+    expect(etat.actif).toBe(perso.id);
+  });
+
+  it("ne revient pas quand on l'a supprimé exprès", () => {
+    const perso = nouveauScenario();
+    const etat = avecExemple({ scenarios: [perso], actif: perso.id, exempleRetire: true });
+    expect(etat.scenarios.map((s) => s.id)).toEqual([perso.id]);
+  });
+
+  it("n'est pas dupliqué s'il est déjà là, même modifié", () => {
+    const exemple = { ...scenarioExemple(), nom: "Mon Omra modifiée" };
+    const etat = avecExemple({ scenarios: [exemple], actif: exemple.id });
+    expect(etat.scenarios).toEqual([exemple]);
   });
 });

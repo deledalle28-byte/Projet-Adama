@@ -5,6 +5,7 @@ import { itineraire, LIBELLE_MODE, programmeParJour, titreTrajet, type LigneProg
 import {
   ajouterJours,
   dateAvecAnnee,
+  dateCourte,
   dateLongue,
   ecartJours,
   formatDecalage,
@@ -19,7 +20,7 @@ import {
 import type { Images } from "../domaine/stockage";
 import type { Etape, EtapeEscale, EtapeSejour, EtapeTransfert, EtapeVol, Lieu, ModeTransfert, Scenario } from "../domaine/types";
 import { barycentre, cadrer, interpolerCamera, type ArcCarte, type Camera, type LonLat, type PointCarte } from "./Carte";
-import { Apparait, clamp01, compteur, easeInCubic, easeInOutCubic, easeOutCubic, fenetre, SousTitre, TitreAnime, VITESSE_ECRITURE } from "./elements";
+import { Apparait, clamp01, compteur, easeInOutCubic, easeOutCubic, fenetre, SousTitre, TitreAnime, VITESSE_ECRITURE } from "./elements";
 import { a, de } from "../domaine/francais";
 
 /* Les scènes sont composées à partir de la chronologie du scénario : une
@@ -165,6 +166,7 @@ export function construireScenes(s: Scenario, c: Chronologie, images: Images): S
       const photos = photosDe(e, images);
       const debutPhotos = debutTrace + dureeTrace + 2_200;
       const duree = photos.length > 0 ? Math.max(dureeBase, debutPhotos + dureeDiaporama(photos) + 600) : dureeBase;
+      const retrait = retraitPour(photos, debutPhotos);
       const progression = (t: number) => easeInOutCubic(fenetre(t, debutTrace, dureeTrace));
       const numero = vols.indexOf(g) + 1;
       scenes.push({
@@ -187,7 +189,7 @@ export function construireScenes(s: Scenario, c: Chronologie, images: Images): S
         }),
         rendu: (t) => (
           <>
-            <SceneTrajet t={t} g={g} e={e} numero={numero} total={vols.length} progression={progression(t)} />
+            <SceneTrajet t={t} g={g} e={e} numero={numero} total={vols.length} progression={progression(t)} retrait={retrait(t)} />
             <Diaporama t={t} debut={debutPhotos} photos={photos} />
           </>
         ),
@@ -202,6 +204,7 @@ export function construireScenes(s: Scenario, c: Chronologie, images: Images): S
     const photos = photosDe(e, images);
     const debutPhotos = 5_000;
     const duree = photos.length > 0 ? Math.max(dureeBase, debutPhotos + dureeDiaporama(photos) + 600) : dureeBase;
+    const retrait = retraitPour(photos, debutPhotos);
     scenes.push({
       cle: `etape-${e.id}`,
       chapitre: `${e.type === "escale" ? "Escale" : "Séjour"} · ${g.de.nom}`,
@@ -215,7 +218,7 @@ export function construireScenes(s: Scenario, c: Chronologie, images: Images): S
       }),
       rendu: (t) => (
         <>
-          {e.type === "escale" ? <SceneEscale t={t} g={g} e={e} /> : <SceneSejour t={t} g={g} e={e} />}
+          {e.type === "escale" ? <SceneEscale t={t} g={g} e={e} retrait={retrait(t)} /> : <SceneSejour t={t} g={g} e={e} retrait={retrait(t)} />}
           <Diaporama t={t} debut={debutPhotos} photos={photos} />
         </>
       ),
@@ -289,6 +292,29 @@ function photosDe(e: Etape, images: Images): Photo[] {
 const dureePhoto = (p: Photo) => Math.max(4_800, 2_400 + p.legende.length * 55);
 export const dureeDiaporama = (photos: Photo[]) => photos.reduce((a, p) => a + dureePhoto(p), 0);
 
+/**
+ * Quand les photos arrivent, le détail de l'étape (horaires, tuiles) s'efface
+ * pour leur laisser la place à gauche : la carte, à droite, reste dégagée
+ * et le trajet ou le lieu restent visibles.
+ */
+function retraitPour(photos: Photo[], debutPhotos: number) {
+  return (t: number) => (photos.length > 0 ? easeInOutCubic(fenetre(t, debutPhotos - 300, 700)) : 0);
+}
+
+/** Le détail d'une étape, qui laisse sa place aux photos ; un résumé d'une ligne reste. */
+function Details({ retrait, resume, className = "", children }: { retrait: number; resume: string; className?: string; children: ReactNode }) {
+  return (
+    <div className={`relative ${className}`}>
+      <div style={{ opacity: 1 - retrait, transform: `translateY(${retrait * 18}px)`, visibility: retrait >= 1 ? "hidden" : undefined }}>{children}</div>
+      {retrait > 0 && (
+        <p className="absolute left-0 top-0 text-[24px] font-semibold text-white/85" style={{ opacity: retrait, transform: `translateY(${(1 - retrait) * -10}px)` }}>
+          {resume}
+        </p>
+      )}
+    </div>
+  );
+}
+
 /** Inclinaisons des polaroïds de la pile. */
 const ANGLES = [-2.6, 2.2, -1.4, 3, -3.2, 1.6];
 /** Durée de l'envol d'une photo vers l'arrière de la pile. */
@@ -303,18 +329,22 @@ const ENVOL = 800;
 function tailleCadre(ratio: number | null): { l: number; h: number } {
   const r = Math.max(0.6, Math.min(2, ratio ?? 4 / 3));
   if (r >= 1) {
-    const l = Math.min(600, 390 * r);
+    const l = Math.min(500, 280 * r);
     return { l, h: l / r };
   }
-  const h = 430;
+  const h = 300;
   return { l: h * r, h };
 }
 
+/** Largeur minimale du cadre : la légende d'un portrait étroit reste lisible. */
+const LARGEUR_MIN_CADRE = 280;
+
 /**
- * Pile de photos façon polaroïds, à droite de la scène. La photo du dessus
- * s'envole au bout de quelques secondes et découvre la suivante ; celles
- * qui attendent dépassent derrière. Elle n'entre qu'une fois le lieu ou le
- * trajet montré (voir `debutPhotos` dans construireScenes).
+ * Pile de photos façon polaroïds, à gauche de la scène, à la place du
+ * détail de l'étape. La photo du dessus s'envole au bout de quelques
+ * secondes et découvre la suivante ; celles qui attendent dépassent
+ * derrière. Elle n'entre qu'une fois le lieu ou le trajet montré (voir
+ * `debutPhotos` dans construireScenes).
  */
 function Diaporama({ t, debut, photos }: { t: number; debut: number; photos: Photo[] }) {
   if (photos.length === 0 || t < debut) return null;
@@ -336,7 +366,7 @@ function Diaporama({ t, debut, photos }: { t: number; debut: number; photos: Pho
 
   const entree = easeOutCubic(fenetre(t, debut, 900));
   return (
-    <div className="absolute" style={{ left: 1185, top: 375, opacity: fenetre(t, debut, 450), transform: `translateX(${(1 - entree) * 160}px)` }}>
+    <div className="absolute" style={{ left: 470, top: 512, opacity: fenetre(t, debut, 450), transform: `translateX(${(entree - 1) * 160}px)` }}>
       {cartes.map(({ i, role, rang }) => {
         const p = photos[i]!;
         const angle = ANGLES[i % ANGLES.length]!;
@@ -359,11 +389,13 @@ function Diaporama({ t, debut, photos }: { t: number; debut: number; photos: Pho
           echelle = 1 - (1 - m) * 0.04;
           lumiere = 0.6 + 0.4 * m;
         } else {
-          const m = easeInCubic(fenetre(t, debuts[courante]!, ENVOL));
-          x = m * 340;
-          y = m * 70;
-          rot = angle + m * 16;
-          opacite = 1 - m;
+          // Part franchement vers la gauche, opaque, et ne s'efface qu'en fin de course.
+          const avance = fenetre(t, debuts[courante]!, ENVOL);
+          const m = easeInOutCubic(avance);
+          x = -m * 460;
+          y = m * 50;
+          rot = angle - m * 18;
+          opacite = 1 - clamp01((avance - 0.55) / 0.45);
         }
         const zoom = role === "dessus" ? 1 + 0.05 * clamp01((t - debuts[i]!) / dureePhoto(p)) : 1;
         return (
@@ -371,6 +403,7 @@ function Diaporama({ t, debut, photos }: { t: number; debut: number; photos: Pho
             key={i}
             photo={p}
             zoom={zoom}
+            compteur={role === "dessus" && photos.length > 1 ? `${i + 1} / ${photos.length}` : undefined}
             style={{
               transform: `translate(-50%, -50%) translate(${x}px, ${y}px) rotate(${rot}deg) scale(${echelle})`,
               opacity: opacite,
@@ -379,28 +412,25 @@ function Diaporama({ t, debut, photos }: { t: number; debut: number; photos: Pho
           />
         );
       })}
-      {photos.length > 1 && (
-        <div className="absolute flex -translate-x-1/2 gap-1.5" style={{ left: 0, top: 292 }}>
-          {photos.map((_, i) => (
-            <span key={i} className="h-2 w-2 rounded-full" style={{ background: i === courante ? OR : "rgba(255,255,255,0.3)" }} />
-          ))}
-        </div>
-      )}
     </div>
   );
 }
 
-function Polaroid({ photo, zoom, style }: { photo: Photo; zoom: number; style: CSSProperties }) {
+function Polaroid({ photo, zoom, compteur, style }: { photo: Photo; zoom: number; compteur?: string; style: CSSProperties }) {
   const { l, h } = tailleCadre(photo.ratio);
   const texteDessous = !photo.sur && photo.legende !== "";
   return (
-    <div className="absolute left-0 top-0 rounded-[6px] bg-[#FBF8F1] p-[14px]" style={{ width: l + 28, boxShadow: "0 30px 80px rgba(0,0,0,0.55)", ...style }}>
+    <div
+      className="absolute left-0 top-0 rounded-[6px] bg-[#FBF8F1] p-[14px]"
+      style={{ width: Math.max(l, LARGEUR_MIN_CADRE) + 28, boxShadow: "0 30px 80px rgba(0,0,0,0.55)", ...style }}
+    >
       <div className="relative overflow-hidden rounded-[3px] bg-[#0B1426]" style={{ height: h }}>
         <img src={photo.src} alt="" className="absolute inset-0 h-full w-full object-cover" style={{ filter: "blur(24px) brightness(0.55)", transform: "scale(1.2)" }} />
         <img src={photo.src} alt={photo.legende} className="absolute inset-0 h-full w-full object-contain" style={{ transform: `scale(${zoom})` }} />
+        {compteur && <span className="absolute right-3 top-3 rounded-full bg-black/55 px-2.5 py-1 text-[14px] font-semibold text-white">{compteur}</span>}
         {photo.sur && photo.legende && (
           <p
-            className="absolute inset-x-0 bottom-0 line-clamp-3 px-6 pb-5 pt-24 text-[24px] font-semibold leading-snug text-white"
+            className="absolute inset-x-0 bottom-0 line-clamp-3 px-5 pb-4 pt-20 text-[22px] font-semibold leading-snug text-white"
             style={{
               background: "linear-gradient(0deg, rgba(5,10,20,0.92) 0%, rgba(5,10,20,0.75) 45%, rgba(5,10,20,0) 100%)",
               textShadow: "0 2px 10px rgba(0,0,0,0.7)",
@@ -411,7 +441,7 @@ function Polaroid({ photo, zoom, style }: { photo: Photo; zoom: number; style: C
         )}
       </div>
       {texteDessous ? (
-        <p className="line-clamp-3 px-1 pb-1 pt-3 text-[21px] font-medium leading-snug text-[#26304A]">{photo.legende}</p>
+        <p className="line-clamp-2 px-1 pb-0.5 pt-2.5 text-[19px] font-medium leading-snug text-[#26304A]">{photo.legende}</p>
       ) : (
         <div className="h-5" />
       )}
@@ -543,6 +573,7 @@ function SceneTrajet({
   numero,
   total,
   progression,
+  retrait,
 }: {
   t: number;
   g: Segment;
@@ -550,6 +581,7 @@ function SceneTrajet({
   numero: number;
   total: number;
   progression: number;
+  retrait: number;
 }) {
   const estVol = e.type === "vol";
   const eyebrow = estVol ? [`Vol ${numero} sur ${total}`, e.compagnie, e.numero].filter(Boolean).join(" · ") : `Transfert ${LIBELLE_MODE[e.mode]}`;
@@ -557,44 +589,47 @@ function SceneTrajet({
   const jours = ecartJours(utcVersLocal(g.debut, g.de.fuseau).date, utcVersLocal(g.fin, g.vers.fuseau).date);
   const Icone = estVol ? Plane : ICONE_MODE[e.mode];
   const titre = g.de.nom !== g.vers.nom ? `${insecable(g.de.nom)} → ${insecable(g.vers.nom)}` : titreTrajet(g);
+  const resume = `${heureLocale(g.debut, g.de.fuseau)} → ${heureLocale(g.fin, g.vers.fuseau)}${jours > 0 ? ` (+${jours} j)` : ""} · ${formatDuree(g.dureeMin)} ${estVol ? "de vol" : "de trajet"}`;
   return (
     <>
       <div className="absolute left-[100px] top-[118px] w-[720px]">
         <Eyebrow t={t}>{eyebrow}</Eyebrow>
         <TitreAnime t={t} texte={titre} className="mt-4" style={{ fontSize: tailleTitre(titre, 72) }} />
-        <div className="mt-9 grid grid-cols-2 gap-5">
-          <TuileHoraire t={t} debut={650} libelle="Départ" ms={g.debut} lieu={g.de} note={memeHeure ? "heure locale" : `heure ${de(g.de.nom)}`} />
-          <TuileHoraire
-            t={t}
-            debut={850}
-            libelle="Arrivée"
-            ms={g.fin}
-            lieu={g.vers}
-            note={memeHeure ? "heure locale" : `heure ${de(g.vers.nom)}`}
-            badge={jours > 0 ? `+${jours} jour${jours > 1 ? "s" : ""}` : undefined}
-          />
-        </div>
-        <Apparait t={t} debut={1_150} className="mt-7 px-5">
-          <BarreTrajet progression={progression} couleur={estVol ? OR : TURQUOISE} Icone={Icone} />
-        </Apparait>
-        <Apparait t={t} debut={1_400} className="mt-6 flex flex-wrap gap-3">
-          <span className="pz-puce">
-            <Clock3 className="h-5 w-5 text-[#F5C56B]" />
-            {formatDuree(g.dureeMin)} {estVol ? "de vol" : "de trajet"}
-          </span>
-          {g.distanceKm >= 1 && (
+        <Details className="mt-9" retrait={retrait} resume={resume}>
+          <div className="grid grid-cols-2 gap-5">
+            <TuileHoraire t={t} debut={650} libelle="Départ" ms={g.debut} lieu={g.de} note={memeHeure ? "heure locale" : `heure ${de(g.de.nom)}`} />
+            <TuileHoraire
+              t={t}
+              debut={850}
+              libelle="Arrivée"
+              ms={g.fin}
+              lieu={g.vers}
+              note={memeHeure ? "heure locale" : `heure ${de(g.vers.nom)}`}
+              badge={jours > 0 ? `+${jours} jour${jours > 1 ? "s" : ""}` : undefined}
+            />
+          </div>
+          <Apparait t={t} debut={1_150} className="mt-7 px-5">
+            <BarreTrajet progression={progression} couleur={estVol ? OR : TURQUOISE} Icone={Icone} />
+          </Apparait>
+          <Apparait t={t} debut={1_400} className="mt-6 flex flex-wrap gap-3">
             <span className="pz-puce">
-              <Route className="h-5 w-5 text-[#F5C56B]" />
-              {formatKm(g.distanceKm)}
+              <Clock3 className="h-5 w-5 text-[#F5C56B]" />
+              {formatDuree(g.dureeMin)} {estVol ? "de vol" : "de trajet"}
             </span>
-          )}
-          {!memeHeure && (
-            <span className="pz-puce">
-              <Globe2 className="h-5 w-5 text-[#F5C56B]" />
-              Décalage {formatDecalage(g.decalageMin)}
-            </span>
-          )}
-        </Apparait>
+            {g.distanceKm >= 1 && (
+              <span className="pz-puce">
+                <Route className="h-5 w-5 text-[#F5C56B]" />
+                {formatKm(g.distanceKm)}
+              </span>
+            )}
+            {!memeHeure && (
+              <span className="pz-puce">
+                <Globe2 className="h-5 w-5 text-[#F5C56B]" />
+                Décalage {formatDecalage(g.decalageMin)}
+              </span>
+            )}
+          </Apparait>
+        </Details>
       </div>
       <SousTitre texte={e.commentaire} t={t} debut={2_600} />
     </>
@@ -654,43 +689,46 @@ function Cadran24h({ debutH, dureeMin, progression, taille = 300 }: { debutH: nu
   );
 }
 
-function SceneEscale({ t, g, e }: { t: number; g: Segment; e: EtapeEscale }) {
+function SceneEscale({ t, g, e, retrait }: { t: number; g: Segment; e: EtapeEscale; retrait: number }) {
   const fz = g.de.fuseau;
   const jours = ecartJours(utcVersLocal(g.debut, fz).date, utcVersLocal(g.fin, fz).date);
   const nuit = jours > 0 && g.dureeMin >= 240;
   const anime = compteur(t, 900, 2_200, g.dureeMin);
+  const resume = `De ${heureLocale(g.debut, fz)} à ${heureLocale(g.fin, fz)} · ${formatDuree(g.dureeMin)} sur place`;
   return (
     <>
       <div className="absolute left-[100px] top-[118px] w-[760px]">
         <Eyebrow t={t}>Escale · {g.de.nom}</Eyebrow>
         <TitreAnime t={t} texte={e.intitule || "Escale"} className="mt-4" style={{ fontSize: tailleTitre(e.intitule || "Escale", 76) }} />
-        <div className="mt-10 flex items-center gap-12">
-          <Apparait t={t} debut={600}>
-            <Cadran24h debutH={heureDecimale(g.debut, fz)} dureeMin={g.dureeMin} progression={easeInOutCubic(fenetre(t, 900, 2_200))} />
-          </Apparait>
-          <div>
-            <Apparait t={t} debut={800}>
-              <p className="pz-chiffre text-[78px] text-[#F5C56B]">{formatDuree(Math.round(anime / 5) * 5)}</p>
-              <p className="mt-2 text-[15px] font-semibold uppercase tracking-[0.25em] text-white/50">sur place</p>
+        <Details className="mt-10" retrait={retrait} resume={resume}>
+          <div className="flex items-center gap-12">
+            <Apparait t={t} debut={600}>
+              <Cadran24h debutH={heureDecimale(g.debut, fz)} dureeMin={g.dureeMin} progression={easeInOutCubic(fenetre(t, 900, 2_200))} />
             </Apparait>
-            <Apparait t={t} debut={1_300} className="mt-8">
-              <p className="text-[26px]">
-                De <b>{heureLocale(g.debut, fz)}</b> à <b>{heureLocale(g.fin, fz)}</b>
-              </p>
-              <p className="mt-1 text-[17px] text-white/55">
-                heure locale · {jours > 0 ? `du ${dateLongue(g.debut, fz)} au ${dateLongue(g.fin, fz)}` : dateLongue(g.debut, fz)}
-              </p>
-            </Apparait>
-            {nuit && (
-              <Apparait t={t} debut={1_700} className="mt-6">
-                <span className="pz-puce">
-                  <Moon className="h-5 w-5 text-[#F5C56B]" />
-                  Nuit sur place
-                </span>
+            <div>
+              <Apparait t={t} debut={800}>
+                <p className="pz-chiffre text-[78px] text-[#F5C56B]">{formatDuree(Math.round(anime / 5) * 5)}</p>
+                <p className="mt-2 text-[15px] font-semibold uppercase tracking-[0.25em] text-white/50">sur place</p>
               </Apparait>
-            )}
+              <Apparait t={t} debut={1_300} className="mt-8">
+                <p className="text-[26px]">
+                  De <b>{heureLocale(g.debut, fz)}</b> à <b>{heureLocale(g.fin, fz)}</b>
+                </p>
+                <p className="mt-1 text-[17px] text-white/55">
+                  heure locale · {jours > 0 ? `du ${dateLongue(g.debut, fz)} au ${dateLongue(g.fin, fz)}` : dateLongue(g.debut, fz)}
+                </p>
+              </Apparait>
+              {nuit && (
+                <Apparait t={t} debut={1_700} className="mt-6">
+                  <span className="pz-puce">
+                    <Moon className="h-5 w-5 text-[#F5C56B]" />
+                    Nuit sur place
+                  </span>
+                </Apparait>
+              )}
+            </div>
           </div>
-        </div>
+        </Details>
       </div>
       <SousTitre texte={e.commentaire} t={t} debut={2_400} />
     </>
@@ -698,7 +736,7 @@ function SceneEscale({ t, g, e }: { t: number; g: Segment; e: EtapeEscale }) {
 }
 
 /* ── Séjour ─────────────────────────────────────────────────────────── */
-function SceneSejour({ t, g, e }: { t: number; g: Segment; e: EtapeSejour }) {
+function SceneSejour({ t, g, e, retrait }: { t: number; g: Segment; e: EtapeSejour; retrait: number }) {
   const fz = g.de.fuseau;
   const arrivee = utcVersLocal(g.debut, fz).date;
   const n = Math.max(0, e.nuits);
@@ -706,55 +744,58 @@ function SceneSejour({ t, g, e }: { t: number; g: Segment; e: EtapeSejour }) {
   const nuits = Array.from({ length: Math.min(n, MAX) }, (_, k) => jourCourt(localVersUtc(ajouterJours(arrivee, k), "20:00", fz), fz));
   const pas = Math.min(220, 2_400 / Math.max(1, nuits.length));
   const titreSejour = `${n} nuit${n > 1 ? "s" : ""} ${insecable(a(g.de.nom))}`;
+  const resume = `Arrivée ${dateCourte(g.debut, fz)} à ${heureLocale(g.debut, fz)} · départ ${dateCourte(g.fin, fz)} à ${heureLocale(g.fin, fz)}`;
   return (
     <>
       <div className="absolute left-[100px] top-[118px] w-[740px]">
         <Eyebrow t={t}>Séjour · {g.de.nom}</Eyebrow>
         <TitreAnime t={t} texte={titreSejour} className="mt-4" style={{ fontSize: tailleTitre(titreSejour, 76) }} />
-        <div className="mt-8 flex flex-wrap gap-2.5">
-          {nuits.map((j, k) => {
-            const allume = fenetre(t, 1_000 + k * pas, 450);
-            return (
-              <div
-                key={k}
-                className="flex w-[76px] flex-col items-center rounded-2xl border py-2.5"
-                style={{
-                  opacity: 0.25 + allume * 0.75,
-                  borderColor: allume > 0.5 ? "rgba(245,197,107,0.55)" : "rgba(255,255,255,0.15)",
-                  background: allume > 0.5 ? "rgba(245,197,107,0.1)" : "rgba(255,255,255,0.04)",
-                  transform: `translateY(${(1 - allume) * 10}px)`,
-                }}
-              >
-                <Moon className="h-5 w-5" style={{ color: allume > 0.5 ? OR : "rgba(255,255,255,0.5)", fill: allume > 0.5 ? OR : "none" }} />
-                <span className="mt-1.5 text-[13px] text-white/60">{j.jour}</span>
-                <span className="text-[22px] font-bold">{j.numero}</span>
+        <Details className="mt-8" retrait={retrait} resume={resume}>
+          <div className="flex flex-wrap gap-2.5">
+            {nuits.map((j, k) => {
+              const allume = fenetre(t, 1_000 + k * pas, 450);
+              return (
+                <div
+                  key={k}
+                  className="flex w-[76px] flex-col items-center rounded-2xl border py-2.5"
+                  style={{
+                    opacity: 0.25 + allume * 0.75,
+                    borderColor: allume > 0.5 ? "rgba(245,197,107,0.55)" : "rgba(255,255,255,0.15)",
+                    background: allume > 0.5 ? "rgba(245,197,107,0.1)" : "rgba(255,255,255,0.04)",
+                    transform: `translateY(${(1 - allume) * 10}px)`,
+                  }}
+                >
+                  <Moon className="h-5 w-5" style={{ color: allume > 0.5 ? OR : "rgba(255,255,255,0.5)", fill: allume > 0.5 ? OR : "none" }} />
+                  <span className="mt-1.5 text-[13px] text-white/60">{j.jour}</span>
+                  <span className="text-[22px] font-bold">{j.numero}</span>
+                </div>
+              );
+            })}
+            {n > MAX && (
+              <div className="flex w-[76px] items-center justify-center rounded-2xl border border-white/15 text-[18px] font-semibold text-white/70" style={{ opacity: fenetre(t, 3_400, 400) }}>
+                +{n - MAX}
               </div>
-            );
-          })}
-          {n > MAX && (
-            <div className="flex w-[76px] items-center justify-center rounded-2xl border border-white/15 text-[18px] font-semibold text-white/70" style={{ opacity: fenetre(t, 3_400, 400) }}>
-              +{n - MAX}
-            </div>
+            )}
+          </div>
+          <div className="mt-8 grid grid-cols-2 gap-5">
+            <Apparait t={t} debut={1_300} className="pz-tuile">
+              <p className="text-[13px] font-semibold uppercase tracking-[0.25em] text-white/50">Arrivée</p>
+              <p className="mt-2 text-[19px] text-white/75">{majuscule(dateLongue(g.debut, fz))}</p>
+              <p className="pz-chiffre mt-1.5 text-[46px] text-[#F5C56B]">{heureLocale(g.debut, fz)}</p>
+            </Apparait>
+            <Apparait t={t} debut={1_500} className="pz-tuile">
+              <p className="text-[13px] font-semibold uppercase tracking-[0.25em] text-white/50">Départ</p>
+              <p className="mt-2 text-[19px] text-white/75">{majuscule(dateLongue(g.fin, fz))}</p>
+              <p className="pz-chiffre mt-1.5 text-[46px] text-[#F5C56B]">{heureLocale(g.fin, fz)}</p>
+            </Apparait>
+          </div>
+          {e.hebergement && (
+            <Apparait t={t} debut={1_900} className="mt-6 flex items-center gap-3 text-[22px]">
+              <BedDouble className="h-6 w-6 text-[#F5C56B]" />
+              {e.hebergement}
+            </Apparait>
           )}
-        </div>
-        <div className="mt-8 grid grid-cols-2 gap-5">
-          <Apparait t={t} debut={1_300} className="pz-tuile">
-            <p className="text-[13px] font-semibold uppercase tracking-[0.25em] text-white/50">Arrivée</p>
-            <p className="mt-2 text-[19px] text-white/75">{majuscule(dateLongue(g.debut, fz))}</p>
-            <p className="pz-chiffre mt-1.5 text-[46px] text-[#F5C56B]">{heureLocale(g.debut, fz)}</p>
-          </Apparait>
-          <Apparait t={t} debut={1_500} className="pz-tuile">
-            <p className="text-[13px] font-semibold uppercase tracking-[0.25em] text-white/50">Départ</p>
-            <p className="mt-2 text-[19px] text-white/75">{majuscule(dateLongue(g.fin, fz))}</p>
-            <p className="pz-chiffre mt-1.5 text-[46px] text-[#F5C56B]">{heureLocale(g.fin, fz)}</p>
-          </Apparait>
-        </div>
-        {e.hebergement && (
-          <Apparait t={t} debut={1_900} className="mt-6 flex items-center gap-3 text-[22px]">
-            <BedDouble className="h-6 w-6 text-[#F5C56B]" />
-            {e.hebergement}
-          </Apparait>
-        )}
+        </Details>
       </div>
       <SousTitre texte={e.commentaire} t={t} debut={2_400} />
     </>

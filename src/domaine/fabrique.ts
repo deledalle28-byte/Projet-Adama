@@ -46,11 +46,14 @@ export function dupliquerScenario(s: Scenario): Scenario {
   };
 }
 
+/** Identifiant fixe du scénario d'exemple intégré au carnet. */
+export const ID_EXEMPLE = "exemple-omra";
+
 /** Scénario d'exemple : une Omra au départ de Paris, escale à Abu Dhabi. */
 export function scenarioExemple(): Scenario {
   const e = (x: SansId<Etape>): Etape => ({ ...x, id: nouvelId("e"), images: [] }) as Etape;
   const s: Scenario = {
-    id: nouvelId("s"),
+    id: ID_EXEMPLE,
     nom: "Omra en famille — avril 2027",
     voyageurs: "Toute la famille",
     depart: { lieu: "aero-CDG", date: "2027-04-15", heure: "10:35" },
