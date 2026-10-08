@@ -5,6 +5,8 @@ import type { CSSProperties, ReactNode } from "react";
 
 export const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 export const easeOutExpo = (x: number) => (x >= 1 ? 1 : 1 - Math.pow(2, -10 * x));
+export const easeOutCubic = (x: number) => 1 - Math.pow(1 - x, 3);
+export const easeInCubic = (x: number) => x * x * x;
 export const easeInOutCubic = (x: number) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
 export const easeOutBack = (x: number) => {
   const c1 = 1.70158;

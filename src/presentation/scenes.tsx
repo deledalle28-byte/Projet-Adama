@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { BedDouble, Bus, Car, CarTaxiFront, Clock3, Footprints, Globe2, Hourglass, Moon, Plane, PlaneLanding, Route, TrainFront } from "lucide-react";
 import type { Chronologie, Segment } from "../domaine/calcul";
 import { itineraire, LIBELLE_MODE, programmeParJour, titreTrajet, type LigneProgramme } from "../domaine/programme";
@@ -19,7 +19,7 @@ import {
 import type { Images } from "../domaine/stockage";
 import type { Etape, EtapeEscale, EtapeSejour, EtapeTransfert, EtapeVol, Lieu, ModeTransfert, Scenario } from "../domaine/types";
 import { barycentre, cadrer, interpolerCamera, type ArcCarte, type Camera, type LonLat, type PointCarte } from "./Carte";
-import { Apparait, compteur, easeInOutCubic, fenetre, SousTitre, TitreAnime, VITESSE_ECRITURE } from "./elements";
+import { Apparait, clamp01, compteur, easeInCubic, easeInOutCubic, easeOutCubic, fenetre, SousTitre, TitreAnime, VITESSE_ECRITURE } from "./elements";
 import { a, de } from "../domaine/francais";
 
 /* Les scènes sont composées à partir de la chronologie du scénario : une
@@ -161,10 +161,10 @@ export function construireScenes(s: Scenario, c: Chronologie, images: Images): S
       const dureeBase = Math.max(estVol ? 12_500 : 10_500, 2_600 + dureeLecture(e.commentaire) + 3_500);
       const debutTrace = 1_700;
       const dureeTrace = Math.min(dureeBase - debutTrace - 2_500, estVol ? 8_000 : 5_500);
-      // Les photos arrivent une fois le trajet tracé : on est arrivé.
+      // Les photos n'arrivent qu'une fois arrivé, après 2 s sur le lieu d'arrivée.
       const photos = photosDe(e, images);
-      const debutPhotos = debutTrace + dureeTrace + 300;
-      const duree = photos.length > 0 ? Math.max(dureeBase, debutPhotos + photos.length * PAR_PHOTO + 800) : dureeBase;
+      const debutPhotos = debutTrace + dureeTrace + 2_200;
+      const duree = photos.length > 0 ? Math.max(dureeBase, debutPhotos + dureeDiaporama(photos) + 600) : dureeBase;
       const progression = (t: number) => easeInOutCubic(fenetre(t, debutTrace, dureeTrace));
       const numero = vols.indexOf(g) + 1;
       scenes.push({
@@ -198,9 +198,10 @@ export function construireScenes(s: Scenario, c: Chronologie, images: Images): S
 
     const fin = cadrer([pos(g.de)], SCENE.rayonBase, SCENE.rayonVue, e.type === "escale" ? 7 : 4.5);
     const dureeBase = Math.max(e.type === "escale" ? 9_500 : 11_000, 2_400 + dureeLecture(e.commentaire) + 3_500);
+    // Le temps de voir le lieu sur la carte avant que les photos n'arrivent.
     const photos = photosDe(e, images);
-    const debutPhotos = 1_500;
-    const duree = photos.length > 0 ? Math.max(dureeBase, debutPhotos + photos.length * PAR_PHOTO + 1_500) : dureeBase;
+    const debutPhotos = 5_000;
+    const duree = photos.length > 0 ? Math.max(dureeBase, debutPhotos + dureeDiaporama(photos) + 600) : dureeBase;
     scenes.push({
       cle: `etape-${e.id}`,
       chapitre: `${e.type === "escale" ? "Escale" : "Séjour"} · ${g.de.nom}`,
@@ -273,68 +274,144 @@ export function construireScenes(s: Scenario, c: Chronologie, images: Images): S
 interface Photo {
   src: string;
   legende: string;
+  sur: boolean;
+  ratio: number | null;
 }
-
-/** Temps d'affichage de chaque photo du diaporama. */
-const PAR_PHOTO = 4_500;
 
 function photosDe(e: Etape, images: Images): Photo[] {
   return e.images.flatMap((i) => {
     const src = images.get(i.id);
-    return src ? [{ src, legende: i.legende }] : [];
+    return src ? [{ src, legende: i.legende.trim(), sur: i.placement === "sur", ratio: i.ratio ?? null }] : [];
   });
 }
 
+/** Le temps de regarder la photo, et de lire sa légende si elle est longue. */
+const dureePhoto = (p: Photo) => Math.max(4_800, 2_400 + p.legende.length * 55);
+export const dureeDiaporama = (photos: Photo[]) => photos.reduce((a, p) => a + dureePhoto(p), 0);
+
+/** Inclinaisons des polaroïds de la pile. */
+const ANGLES = [-2.6, 2.2, -1.4, 3, -3.2, 1.6];
+/** Durée de l'envol d'une photo vers l'arrière de la pile. */
+const ENVOL = 800;
+
 /**
- * Diaporama à droite de la scène : chaque photo entre en fondu par-dessus
- * la précédente et avance doucement vers l'objectif. Fond flouté de la
- * même photo : un portrait comme un paysage remplit le cadre sans être
- * rogné.
+ * Taille de la photo dans son cadre : le cadre épouse sa forme (portrait
+ * ou paysage). Au-delà d'un panoramique ou d'un portrait très étroit, la
+ * photo est entière et le reste du cadre est rempli par la même photo,
+ * floutée : rien n'est jamais rogné.
+ */
+function tailleCadre(ratio: number | null): { l: number; h: number } {
+  const r = Math.max(0.6, Math.min(2, ratio ?? 4 / 3));
+  if (r >= 1) {
+    const l = Math.min(600, 390 * r);
+    return { l, h: l / r };
+  }
+  const h = 430;
+  return { l: h * r, h };
+}
+
+/**
+ * Pile de photos façon polaroïds, à droite de la scène. La photo du dessus
+ * s'envole au bout de quelques secondes et découvre la suivante ; celles
+ * qui attendent dépassent derrière. Elle n'entre qu'une fois le lieu ou le
+ * trajet montré (voir `debutPhotos` dans construireScenes).
  */
 function Diaporama({ t, debut, photos }: { t: number; debut: number; photos: Photo[] }) {
   if (photos.length === 0 || t < debut) return null;
-  const courante = Math.min(photos.length - 1, Math.floor((t - debut) / PAR_PHOTO));
-  const entree = fenetre(t, debut, 800);
+  const debuts: number[] = [];
+  let cumul = debut;
+  for (const p of photos) {
+    debuts.push(cumul);
+    cumul += dureePhoto(p);
+  }
+  let courante = 0;
+  debuts.forEach((d, i) => {
+    if (t >= d) courante = i;
+  });
+
+  const cartes: { i: number; role: "attente" | "dessus" | "envol"; rang: number }[] = [];
+  for (let i = Math.min(photos.length - 1, courante + 2); i > courante; i--) cartes.push({ i, role: "attente", rang: i - courante });
+  cartes.push({ i: courante, role: "dessus", rang: 0 });
+  if (courante > 0 && t - debuts[courante]! < ENVOL) cartes.push({ i: courante - 1, role: "envol", rang: 0 });
+
+  const entree = easeOutCubic(fenetre(t, debut, 900));
   return (
-    <div
-      className="absolute"
-      style={{
-        left: 870,
-        top: 112,
-        width: 640,
-        opacity: fenetre(t, debut, 500),
-        transform: `translateX(${(1 - easeInOutCubic(entree)) * 70}px) rotate(1.2deg)`,
-      }}
-    >
-      <div
-        className="relative overflow-hidden rounded-[20px] border-[6px] border-white/90"
-        style={{ height: 450, background: "#0B1426", boxShadow: "0 40px 100px rgba(0,0,0,0.6)" }}
-      >
-        {photos.slice(0, courante + 2).map((p, i) => {
-          const debutPhoto = debut + i * PAR_PHOTO;
-          const opacite = i === 0 ? 1 : fenetre(t, debutPhoto, 800);
-          if (opacite <= 0) return null;
-          const zoom = 1 + 0.06 * Math.min(1, Math.max(0, t - debutPhoto) / (PAR_PHOTO + 800));
-          return (
-            <div key={i} className="absolute inset-0" style={{ opacity: opacite }}>
-              <img src={p.src} alt="" className="absolute inset-0 h-full w-full object-cover" style={{ filter: "blur(26px) brightness(0.5)", transform: "scale(1.2)" }} />
-              <img src={p.src} alt={p.legende} className="absolute inset-0 h-full w-full object-contain" style={{ transform: `scale(${zoom})` }} />
-            </div>
-          );
-        })}
-      </div>
-      <div className="mt-4 flex items-start justify-between gap-6">
-        <p key={courante} className="min-h-[30px] text-[22px] font-medium leading-snug text-white/90" style={{ opacity: fenetre(t, debut + courante * PAR_PHOTO + 200, 600) }}>
-          {photos[courante]!.legende}
-        </p>
-        {photos.length > 1 && (
-          <div className="mt-2 flex shrink-0 gap-1.5">
-            {photos.map((_, i) => (
-              <span key={i} className="h-2 w-2 rounded-full" style={{ background: i === courante ? OR : "rgba(255,255,255,0.3)" }} />
-            ))}
-          </div>
+    <div className="absolute" style={{ left: 1185, top: 375, opacity: fenetre(t, debut, 450), transform: `translateX(${(1 - entree) * 160}px)` }}>
+      {cartes.map(({ i, role, rang }) => {
+        const p = photos[i]!;
+        const angle = ANGLES[i % ANGLES.length]!;
+        let x = 0;
+        let y = 0;
+        let rot = angle;
+        let echelle = 1;
+        let opacite = 1;
+        let lumiere = 1;
+        if (role === "attente") {
+          x = rang * 16;
+          y = rang * 12;
+          echelle = 1 - rang * 0.04;
+          lumiere = 0.6;
+        } else if (role === "dessus") {
+          // Remonte au premier plan pendant l'envol de la précédente.
+          const m = i === 0 ? 1 : easeInOutCubic(fenetre(t, debuts[i]!, ENVOL));
+          x = (1 - m) * 16;
+          y = (1 - m) * 12;
+          echelle = 1 - (1 - m) * 0.04;
+          lumiere = 0.6 + 0.4 * m;
+        } else {
+          const m = easeInCubic(fenetre(t, debuts[courante]!, ENVOL));
+          x = m * 340;
+          y = m * 70;
+          rot = angle + m * 16;
+          opacite = 1 - m;
+        }
+        const zoom = role === "dessus" ? 1 + 0.05 * clamp01((t - debuts[i]!) / dureePhoto(p)) : 1;
+        return (
+          <Polaroid
+            key={i}
+            photo={p}
+            zoom={zoom}
+            style={{
+              transform: `translate(-50%, -50%) translate(${x}px, ${y}px) rotate(${rot}deg) scale(${echelle})`,
+              opacity: opacite,
+              filter: lumiere < 1 ? `brightness(${lumiere})` : undefined,
+            }}
+          />
+        );
+      })}
+      {photos.length > 1 && (
+        <div className="absolute flex -translate-x-1/2 gap-1.5" style={{ left: 0, top: 292 }}>
+          {photos.map((_, i) => (
+            <span key={i} className="h-2 w-2 rounded-full" style={{ background: i === courante ? OR : "rgba(255,255,255,0.3)" }} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Polaroid({ photo, zoom, style }: { photo: Photo; zoom: number; style: CSSProperties }) {
+  const { l, h } = tailleCadre(photo.ratio);
+  const texteDessous = !photo.sur && photo.legende !== "";
+  return (
+    <div className="absolute left-0 top-0 rounded-[6px] bg-[#FBF8F1] p-[14px]" style={{ width: l + 28, boxShadow: "0 30px 80px rgba(0,0,0,0.55)", ...style }}>
+      <div className="relative overflow-hidden rounded-[3px] bg-[#0B1426]" style={{ height: h }}>
+        <img src={photo.src} alt="" className="absolute inset-0 h-full w-full object-cover" style={{ filter: "blur(24px) brightness(0.55)", transform: "scale(1.2)" }} />
+        <img src={photo.src} alt={photo.legende} className="absolute inset-0 h-full w-full object-contain" style={{ transform: `scale(${zoom})` }} />
+        {photo.sur && photo.legende && (
+          <p
+            className="absolute inset-x-0 bottom-0 line-clamp-3 px-6 pb-5 pt-16 text-[24px] font-semibold leading-snug text-white"
+            style={{ background: "linear-gradient(0deg, rgba(5,10,20,0.85), rgba(5,10,20,0))", textShadow: "0 2px 10px rgba(0,0,0,0.6)" }}
+          >
+            {photo.legende}
+          </p>
         )}
       </div>
+      {texteDessous ? (
+        <p className="line-clamp-3 px-1 pb-1 pt-3 text-[21px] font-medium leading-snug text-[#26304A]">{photo.legende}</p>
+      ) : (
+        <div className="h-5" />
+      )}
     </div>
   );
 }

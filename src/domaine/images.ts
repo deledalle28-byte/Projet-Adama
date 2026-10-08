@@ -28,7 +28,7 @@ async function decoder(fichier: File): Promise<{ source: CanvasImageSource; larg
   }
 }
 
-export async function preparerImage(fichier: File): Promise<{ id: string; donnees: string }> {
+export async function preparerImage(fichier: File): Promise<{ id: string; donnees: string; ratio: number }> {
   let image;
   try {
     image = await decoder(fichier);
@@ -52,5 +52,5 @@ export async function preparerImage(fichier: File): Promise<{ id: string; donnee
   ctx.fillRect(0, 0, l, h);
   ctx.drawImage(image.source, 0, 0, l, h);
   if ("close" in image.source) (image.source as ImageBitmap).close();
-  return { id: nouvelId("img"), donnees: canvas.toDataURL("image/jpeg", QUALITE) };
+  return { id: nouvelId("img"), donnees: canvas.toDataURL("image/jpeg", QUALITE), ratio: l / h };
 }

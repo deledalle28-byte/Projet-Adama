@@ -26,9 +26,18 @@ Pendant la visite :
 
 ### Photos
 
-Chaque étape a une zone « Photos » : clique sur « Ajouter des photos » ou glisses-y des images, puis ajoute une légende si tu veux. Dans la visite, elles s'affichent en diaporama à droite de l'écran : après le trajet pour un vol ou un transfert, dès le début pour une escale ou un séjour. La scène s'allonge pour laisser environ 4 secondes à chaque photo.
+Chaque étape a une zone « Photos ». On y ajoute autant de photos qu'on veut, avec le bouton « Ajouter des photos » ou en les glissant dedans. Pour chaque photo :
+- un petit texte (légende ou commentaire), facultatif ;
+- la place de ce texte : **sous la photo**, comme une légende de polaroïd, ou **sur la photo**, en bas sur un dégradé sombre ;
+- l'ordre de passage, avec les flèches.
 
-Les photos sont réduites à 1600 pixels et réencodées en JPEG (200 à 400 Ko pour une photo de téléphone). Les photos HEIC d'iPhone ne sont pas lisibles par le navigateur : les convertir en JPEG, ou régler l'iPhone sur « Le plus compatible ».
+Dans la visite, les photos forment une pile de polaroïds à droite de l'écran. Celle du dessus s'envole au bout de quelques secondes et découvre la suivante, et les suivantes dépassent derrière. Elles n'arrivent qu'une fois le lieu ou le trajet montré :
+- **escale ou séjour** : environ 3 secondes sur la carte d'abord ;
+- **vol ou transfert** : le trajet est tracé, puis 2 secondes sur le lieu d'arrivée.
+
+Chaque photo reste au moins 5 secondes à l'écran, plus longtemps si son texte est long. La scène s'allonge d'autant.
+
+**Formats** : le cadre prend la forme de chaque photo (paysage, portrait, carré). Les photos sont réduites à 1600 pixels sur leur plus grand côté, en gardant leurs proportions, puis réencodées en JPEG (200 à 400 Ko pour une photo de téléphone). Une photo n'est jamais rognée. Pour un panoramique ou un portrait très étroit, le cadre est plafonné : la photo y est montrée en entier, et le reste du cadre est rempli par la même photo, floutée. Seules les vignettes du carnet sont recadrées, pour l'aperçu. Les photos HEIC d'iPhone ne sont pas lisibles par le navigateur : les convertir en JPEG, ou régler l'iPhone sur « Le plus compatible ».
 
 ### Où sont gardés les scénarios
 

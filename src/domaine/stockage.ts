@@ -197,7 +197,12 @@ function normaliserEtape(x: unknown): Etape | null {
   const images = Array.isArray(o.images)
     ? o.images
         .filter((i): i is Record<string, unknown> => !!i && typeof i === "object" && typeof (i as Record<string, unknown>).id === "string")
-        .map((i) => ({ id: str(i.id), legende: str(i.legende) }))
+        .map((i) => ({
+          id: str(i.id),
+          legende: str(i.legende),
+          placement: i.placement === "sur" ? ("sur" as const) : ("sous" as const),
+          ...(typeof i.ratio === "number" && i.ratio > 0 && Number.isFinite(i.ratio) ? { ratio: i.ratio } : {}),
+        }))
     : [];
   const base = { id: str(o.id) || nouvelId("e"), commentaire: str(o.commentaire), images };
   switch (o.type) {

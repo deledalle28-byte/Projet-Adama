@@ -32,7 +32,12 @@ export type ModeTransfert = "bus" | "train" | "voiture" | "taxi" | "pied";
     base.ts) : le scénario n'en garde que l'identifiant et la légende. */
 export interface ImageEtape {
   id: string;
+  /** Petit texte affiché avec la photo (facultatif). */
   legende: string;
+  /** Texte sous la photo (façon polaroïd) ou posé dessus. */
+  placement: "sous" | "sur";
+  /** Largeur / hauteur : le cadre prend la forme de la photo. */
+  ratio?: number;
 }
 
 interface EtapeBase {

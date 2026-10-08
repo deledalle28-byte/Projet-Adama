@@ -5,7 +5,7 @@ import { exporterVisite } from "./domaine/exportVisite";
 import { dupliquerScenario, nouveauScenario, scenarioExemple } from "./domaine/fabrique";
 import { preparerImage } from "./domaine/images";
 import { charger, exporterJson, importerJson, sauver, type Chargement, type Etat, type Images } from "./domaine/stockage";
-import type { Scenario } from "./domaine/types";
+import type { ImageEtape, Scenario } from "./domaine/types";
 import { Editeur, type ActionsEditeur } from "./editeur/Editeur";
 import { Visite } from "./visite/Visite";
 
@@ -50,18 +50,20 @@ function Carnet({ init }: { init: Chargement }) {
   const ajouterPhotos = useCallback(
     async (scenarioId: string, etapeId: string, fichiers: File[]): Promise<string[]> => {
       const preparees: Images = new Map();
+      const ratios = new Map<string, number>();
       const erreurs: string[] = [];
       for (const f of fichiers) {
         try {
-          const { id, donnees } = await preparerImage(f);
+          const { id, donnees, ratio } = await preparerImage(f);
           preparees.set(id, donnees);
+          ratios.set(id, ratio);
         } catch (e) {
           erreurs.push(e instanceof Error ? e.message : `« ${f.name} » n'a pas pu être ajoutée.`);
         }
       }
       await rangerImages(preparees);
       // Mise à jour fonctionnelle : ce qui a été tapé pendant la préparation est conservé.
-      const ajoutees = [...preparees.keys()].map((id) => ({ id, legende: "" }));
+      const ajoutees: ImageEtape[] = [...preparees.keys()].map((id) => ({ id, legende: "", placement: "sous", ratio: ratios.get(id) }));
       if (ajoutees.length > 0) {
         setEtat((e) => ({
           ...e,
