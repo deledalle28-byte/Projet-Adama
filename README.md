@@ -37,6 +37,8 @@ Dans la visite, les photos forment une pile de polaroïds à droite de l'écran.
 
 Chaque photo reste au moins 5 secondes à l'écran, plus longtemps si son texte est long. La scène s'allonge d'autant.
 
+**Exemple** : le scénario d'exemple (Omra d'avril 2027) est fourni avec 7 images, des illustrations façon affiches de voyage dessinées pour le carnet, pour voir ce que donnent les photos dans la visite. Si ton carnet a déjà des scénarios, le lien « Ajouter le scénario d'exemple » sous la liste des scénarios l'ajoute avec ses images.
+
 **Formats** : le cadre prend la forme de chaque photo (paysage, portrait, carré). Les photos sont réduites à 1600 pixels sur leur plus grand côté, en gardant leurs proportions, puis réencodées en JPEG (200 à 400 Ko pour une photo de téléphone). Une photo n'est jamais rognée. Pour un panoramique ou un portrait très étroit, le cadre est plafonné : la photo y est montrée en entier, et le reste du cadre est rempli par la même photo, floutée. Seules les vignettes du carnet sont recadrées, pour l'aperçu. Les photos HEIC d'iPhone ne sont pas lisibles par le navigateur : les convertir en JPEG, ou régler l'iPhone sur « Le plus compatible ».
 
 ### Où sont gardés les scénarios

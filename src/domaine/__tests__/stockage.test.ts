@@ -7,6 +7,7 @@ const PIXEL = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ==";
 describe("photos des étapes", () => {
   it("garde identifiants et légendes, écarte ce qui n'est pas une photo", () => {
     const brut = structuredClone(scenarioExemple()) as unknown as { etapes: Record<string, unknown>[] };
+    for (const e of brut.etapes) e.images = [];
     brut.etapes[1]!.images = [
       { id: "img-1", legende: "Terminal 3", placement: "sur", ratio: 1.5 },
       { id: "img-2", legende: "", ratio: -3 }, // ancienne photo, ratio absurde
@@ -39,6 +40,13 @@ describe("photos des étapes", () => {
     expect(scenario.id).not.toBe(s.id);
     expect(scenario.etapes[1]!.images).toEqual([{ id: "img-1", legende: "Terminal 3", placement: "sous", ratio: 1.5 }]);
     expect(importees.get("img-1")).toBe(PIXEL);
+  });
+
+  it("donne des photos d'exemple à plusieurs étapes, dans des formats variés", () => {
+    const photos = scenarioExemple().etapes.flatMap((e) => e.images);
+    expect(photos.length).toBe(7);
+    expect(new Set(photos.map((p) => p.ratio)).size).toBeGreaterThanOrEqual(4);
+    expect(photos.some((p) => p.placement === "sur") && photos.some((p) => p.placement === "sous")).toBe(true);
   });
 
   it("lit encore les fichiers .json de la v1, sans photos", async () => {

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { CheckCircle2, Copy, Download, FileDown, FileUp, Play, Plus, Trash2, TriangleAlert, Undo2 } from "lucide-react";
+import { CheckCircle2, Copy, Download, FileDown, FileUp, Play, Plus, Sparkles, Trash2, TriangleAlert, Undo2 } from "lucide-react";
 import { calculerChronologie, type Chronologie } from "../domaine/calcul";
 import { nouvelleEtape } from "../domaine/fabrique";
 import { trouverLieu } from "../domaine/lieux";
@@ -158,6 +158,14 @@ function ListeScenarios({ etat, actions }: { etat: Etat; actions: ActionsEditeur
           );
         })}
       </ul>
+      <button
+        type="button"
+        onClick={actions.exemple}
+        className="inline-flex items-center gap-1.5 px-1 text-xs font-medium text-or-fonce hover:underline"
+        title="Ajoute l'Omra d'exemple, avec ses photos, pour voir ce que donne une visite complète"
+      >
+        <Sparkles className="h-3.5 w-3.5" /> Ajouter le scénario d'exemple
+      </button>
       {etat.actif && (
         <div className="grid grid-cols-2 gap-1.5 border-t border-[#E7E1D6] pt-3">
           <button type="button" className="bouton text-xs" onClick={actions.dupliquer} title="Crée une variante à modifier (ex. escale plus longue)">

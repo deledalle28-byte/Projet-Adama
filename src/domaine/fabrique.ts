@@ -49,7 +49,7 @@ export function dupliquerScenario(s: Scenario): Scenario {
 /** Scénario d'exemple : une Omra au départ de Paris, escale à Abu Dhabi. */
 export function scenarioExemple(): Scenario {
   const e = (x: SansId<Etape>): Etape => ({ ...x, id: nouvelId("e"), images: [] }) as Etape;
-  return {
+  const s: Scenario = {
     id: nouvelId("s"),
     nom: "Omra en famille — avril 2027",
     voyageurs: "Toute la famille",
@@ -104,4 +104,20 @@ export function scenarioExemple(): Scenario {
       e({ type: "vol", vers: "aero-CDG", duree: 455, compagnie: "Etihad Airways", numero: "", commentaire: "Atterrissage à Paris en fin de soirée." }),
     ],
   };
+  // Photos d'exemple (illustrations incluses dans le carnet, voir exemple/photos.ts).
+  const photo = (id: string, legende: string, ratio: number, placement: "sous" | "sur" = "sous") => ({ id, legende, ratio, placement });
+  const poser = (index: number, ...photos: ReturnType<typeof photo>[]) => {
+    s.etapes[index]!.images = photos;
+  };
+  poser(0, photo("exemple-hublot", "Le soleil se couche au-dessus des nuages.", 0.75));
+  poser(
+    1,
+    photo("exemple-abudhabi", "Abu Dhabi à la tombée de la nuit.", 1.5),
+    photo("exemple-departs", "Notre vol pour Djeddah : embarquement porte B12.", 1.5),
+  );
+  poser(5, photo("exemple-mecque", "La vue depuis la chambre, au lever du soleil.", 2 / 3));
+  poser(6, photo("exemple-train", "Le train Haramain file à travers le désert.", 2));
+  poser(7, photo("exemple-medine", "Les grands parasols de la mosquée du Prophète au coucher du soleil.", 1.5, "sur"));
+  poser(12, photo("exemple-paris", "Bienvenue à la maison !", 1, "sur"));
+  return s;
 }

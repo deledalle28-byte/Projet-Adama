@@ -4,10 +4,21 @@ import { calculerChronologie } from "./domaine/calcul";
 import { exporterVisite } from "./domaine/exportVisite";
 import { dupliquerScenario, nouveauScenario, scenarioExemple } from "./domaine/fabrique";
 import { preparerImage } from "./domaine/images";
-import { charger, exporterJson, importerJson, sauver, type Chargement, type Etat, type Images } from "./domaine/stockage";
+import { charger, exporterJson, importerJson, imagesUtilisees, sauver, type Chargement, type Etat, type Images } from "./domaine/stockage";
 import type { ImageEtape, Scenario } from "./domaine/types";
 import { Editeur, type ActionsEditeur } from "./editeur/Editeur";
+import { PHOTOS_EXEMPLE } from "./exemple/photos";
 import { Visite } from "./visite/Visite";
+
+/** Photos d'exemple utilisées par les scénarios mais absentes de la mémoire. */
+function photosExempleManquantes(etat: Etat, images: Images): Images {
+  const manquantes: Images = new Map();
+  for (const id of imagesUtilisees(etat.scenarios)) {
+    const donnees = PHOTOS_EXEMPLE.get(id);
+    if (donnees && !images.has(id)) manquantes.set(id, donnees);
+  }
+  return manquantes;
+}
 
 export function App() {
   const [init, setInit] = useState<Chargement | null>(null);
@@ -22,7 +33,12 @@ export function App() {
 
 function Carnet({ init }: { init: Chargement }) {
   const [etat, setEtat] = useState<Etat>(init.etat);
-  const [images, setImages] = useState<Images>(init.images);
+  // Le scénario d'exemple créé au premier lancement : ses photos viennent du carnet.
+  const [photosExemple] = useState(() => photosExempleManquantes(init.etat, init.images));
+  const [images, setImages] = useState<Images>(() => new Map([...init.images, ...photosExemple]));
+  useEffect(() => {
+    if (photosExemple.size > 0) void ecrireImages(photosExemple);
+  }, [photosExemple]);
   const [apercu, setApercu] = useState(false);
   const [sauve, setSauve] = useState(true);
 
@@ -82,7 +98,10 @@ function Carnet({ init }: { init: Chargement }) {
   const actions: ActionsEditeur = {
     selectionner: (id) => setEtat((e) => ({ ...e, actif: id })),
     creer: () => ajouter(nouveauScenario()),
-    exemple: () => ajouter(scenarioExemple()),
+    exemple: () => {
+      void rangerImages(PHOTOS_EXEMPLE);
+      ajouter(scenarioExemple());
+    },
     dupliquer: () => actif && ajouter(dupliquerScenario(actif)),
     supprimer: () => {
       if (!actif || !window.confirm(`Supprimer le scénario « ${actif.nom} » ?`)) return;

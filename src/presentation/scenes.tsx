@@ -400,8 +400,11 @@ function Polaroid({ photo, zoom, style }: { photo: Photo; zoom: number; style: C
         <img src={photo.src} alt={photo.legende} className="absolute inset-0 h-full w-full object-contain" style={{ transform: `scale(${zoom})` }} />
         {photo.sur && photo.legende && (
           <p
-            className="absolute inset-x-0 bottom-0 line-clamp-3 px-6 pb-5 pt-16 text-[24px] font-semibold leading-snug text-white"
-            style={{ background: "linear-gradient(0deg, rgba(5,10,20,0.85), rgba(5,10,20,0))", textShadow: "0 2px 10px rgba(0,0,0,0.6)" }}
+            className="absolute inset-x-0 bottom-0 line-clamp-3 px-6 pb-5 pt-24 text-[24px] font-semibold leading-snug text-white"
+            style={{
+              background: "linear-gradient(0deg, rgba(5,10,20,0.92) 0%, rgba(5,10,20,0.75) 45%, rgba(5,10,20,0) 100%)",
+              textShadow: "0 2px 10px rgba(0,0,0,0.7)",
+            }}
           >
             {photo.legende}
           </p>
