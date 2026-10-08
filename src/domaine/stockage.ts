@@ -3,39 +3,33 @@ import type { Etape, Lieu, Scenario } from "./types";
 
 /* Où vivent les scénarios.
 
-   1. Dans le navigateur (localStorage) : sauvegarde automatique à chaque
-      modification. Pratique, mais propre à ce navigateur sur cet ordinateur.
-   2. Dans le fichier lui-même : « Enregistrer une copie » télécharge un
-      nouveau carnet-de-route.html qui embarque les scénarios. C'est la
-      vraie sauvegarde, et c'est ce fichier qu'on envoie à quelqu'un.
-
-   Une copie a son propre espace dans le navigateur (clé suffixée par son
-   identifiant d'export) : ouvrir une copie ne mélange pas ses scénarios
-   avec ceux de l'original. */
+   Le carnet les garde dans le navigateur (localStorage) et les sauvegarde
+   à chaque modification. Pour les mettre à l'abri ou les passer sur un
+   autre ordinateur : Exporter / Importer (.json). Ce qu'on montre aux
+   proches, c'est la visite : un fichier HTML à part qui ne contient que le
+   scénario choisi (voir exportVisite.ts). */
 
 const CLE_BASE = "carnet-de-route.v1";
-const ID_DONNEES = "donnees-carnet";
+/** Les « copies » de la v1 embarquaient leurs scénarios : elles s'ouvrent
+    toujours, chacune dans son propre espace du navigateur. */
+const ID_COPIE_V1 = "donnees-carnet";
+/** Balise du scénario embarqué dans un fichier de visite. */
+export const ID_VISITE = "donnees-visite";
 
 export interface Etat {
   scenarios: Scenario[];
   actif: string | null;
 }
 
-interface Embarque extends Etat {
+interface CopieV1 extends Etat {
   exportId: string;
 }
 
-/** Source HTML du fichier, capturée au démarrage avant le rendu. */
-let SOURCE = "";
-export function capturerSource(): void {
-  SOURCE = "<!doctype html>\n" + document.documentElement.outerHTML;
-}
-
-function lireEmbarque(): Embarque | null {
-  const el = document.getElementById(ID_DONNEES);
+function lireCopieV1(): CopieV1 | null {
+  const el = document.getElementById(ID_COPIE_V1);
   if (!el?.textContent) return null;
   try {
-    const brut = JSON.parse(el.textContent) as Partial<Embarque>;
+    const brut = JSON.parse(el.textContent) as Partial<CopieV1>;
     const scenarios = (brut.scenarios ?? []).map(normaliserScenario).filter((s): s is Scenario => s != null);
     if (!brut.exportId || scenarios.length === 0) return null;
     return { exportId: brut.exportId, scenarios, actif: brut.actif ?? scenarios[0]!.id };
@@ -47,13 +41,11 @@ function lireEmbarque(): Embarque | null {
 export interface Chargement {
   etat: Etat;
   cle: string;
-  /** Vrai quand le fichier ouvert est une copie avec scénarios embarqués. */
-  copie: boolean;
 }
 
 export function charger(): Chargement {
-  const embarque = lireEmbarque();
-  const cle = embarque ? `${CLE_BASE}.${embarque.exportId}` : CLE_BASE;
+  const copie = lireCopieV1();
+  const cle = copie ? `${CLE_BASE}.${copie.exportId}` : CLE_BASE;
   try {
     const brut = localStorage.getItem(cle);
     if (brut) {
@@ -61,15 +53,15 @@ export function charger(): Chargement {
       const scenarios = (e.scenarios ?? []).map(normaliserScenario).filter((s): s is Scenario => s != null);
       if (scenarios.length > 0) {
         const actif = scenarios.some((s) => s.id === e.actif) ? e.actif! : scenarios[0]!.id;
-        return { etat: { scenarios, actif }, cle, copie: !!embarque };
+        return { etat: { scenarios, actif }, cle };
       }
     }
   } catch {
     /* stockage indisponible ou illisible : on repart du fichier */
   }
-  if (embarque) return { etat: { scenarios: embarque.scenarios, actif: embarque.actif }, cle, copie: true };
+  if (copie) return { etat: { scenarios: copie.scenarios, actif: copie.actif }, cle };
   const exemple = scenarioExemple();
-  return { etat: { scenarios: [exemple], actif: exemple.id }, cle, copie: false };
+  return { etat: { scenarios: [exemple], actif: exemple.id }, cle };
 }
 
 /** Sauvegarde dans le navigateur ; renvoie false si elle a échoué. */
@@ -82,12 +74,23 @@ export function sauver(cle: string, etat: Etat): boolean {
   }
 }
 
+/** Scénario embarqué dans un fichier de visite, ou null. */
+export function lireVisite(): Scenario | null {
+  const el = document.getElementById(ID_VISITE);
+  if (!el?.textContent) return null;
+  try {
+    return normaliserScenario((JSON.parse(el.textContent) as { scenario?: unknown }).scenario);
+  } catch {
+    return null;
+  }
+}
+
 /* ── Fichiers ───────────────────────────────────────────────────────── */
 
 export function nomDeFichier(nom: string): string {
   const base = nom
     .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
+    .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
@@ -95,7 +98,7 @@ export function nomDeFichier(nom: string): string {
   return base || "voyage";
 }
 
-function telecharger(contenu: Blob, nom: string): void {
+export function telecharger(contenu: Blob, nom: string): void {
   const url = URL.createObjectURL(contenu);
   const a = document.createElement("a");
   a.href = url;
@@ -104,31 +107,6 @@ function telecharger(contenu: Blob, nom: string): void {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
-}
-
-/** Vrai quand le fichier courant peut produire une copie de lui-même. */
-export function copiePossible(): boolean {
-  // En développement (vite), le code est chargé depuis /src : pas de copie.
-  return SOURCE !== "" && !import.meta.env.DEV;
-}
-
-/**
- * Télécharge une copie de ce fichier HTML avec les scénarios embarqués.
- * Passe par DOMParser : aucune balise <script> n'est écrite en dur dans le
- * code (elle couperait le script inliné du fichier).
- */
-export function enregistrerCopie(etat: Etat, nomFichier: string): void {
-  const doc = new DOMParser().parseFromString(SOURCE, "text/html");
-  doc.getElementById(ID_DONNEES)?.remove();
-  const donnees: Embarque = { ...etat, exportId: nouvelId("x") };
-  const el = doc.createElement("script");
-  el.id = ID_DONNEES;
-  el.type = "application/json";
-  // « < » échappé : un commentaire contenant « </script> » ne casse rien.
-  el.textContent = JSON.stringify(donnees).replace(/</g, "\\u003c");
-  doc.body.appendChild(el);
-  const html = "<!doctype html>\n" + doc.documentElement.outerHTML;
-  telecharger(new Blob([html], { type: "text/html;charset=utf-8" }), `${nomFichier}.html`);
 }
 
 export function exporterJson(s: Scenario): void {

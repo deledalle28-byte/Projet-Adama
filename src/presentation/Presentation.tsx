@@ -11,7 +11,30 @@ import { construireScenes, SCENE, type Scene } from "./scenes";
    Toutes les scènes sont composées sur une scène fixe de 1600 × 900, mise à
    l'échelle de l'écran : même rendu sur un portable que sur une télé. */
 
-export function Presentation({ scenario, chronologie, onQuitter }: { scenario: Scenario; chronologie: Chronologie; onQuitter: () => void }) {
+/** Échelle de la scène fixe de 1600 × 900 pour remplir la fenêtre (letterbox). */
+export function useEchelleScene(): number {
+  const calculer = () => Math.min(window.innerWidth / SCENE.w, window.innerHeight / SCENE.h);
+  const [echelle, setEchelle] = useState(calculer);
+  useEffect(() => {
+    const onResize = () => setEchelle(calculer());
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  return echelle;
+}
+
+export function Presentation({
+  scenario,
+  chronologie,
+  onQuitter,
+  libelleRetour,
+}: {
+  scenario: Scenario;
+  chronologie: Chronologie;
+  onQuitter: () => void;
+  /** Bouton de sortie du récapitulatif, ex. « Retour à l'accueil ». */
+  libelleRetour: string;
+}) {
   const scenes = useMemo(() => construireScenes(scenario, chronologie), [scenario, chronologie]);
   const [idx, setIdx] = useState(0);
   const [t, setT] = useState(0);
@@ -20,12 +43,7 @@ export function Presentation({ scenario, chronologie, onQuitter }: { scenario: S
   const tRef = useRef(0);
   const pauseRef = useRef(false);
 
-  const [echelle, setEchelle] = useState(() => Math.min(window.innerWidth / SCENE.w, window.innerHeight / SCENE.h));
-  useEffect(() => {
-    const onResize = () => setEchelle(Math.min(window.innerWidth / SCENE.w, window.innerHeight / SCENE.h));
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, []);
+  const echelle = useEchelleScene();
 
   const aller = useCallback(
     (i: number) => {
@@ -99,6 +117,7 @@ export function Presentation({ scenario, chronologie, onQuitter }: { scenario: S
   const actions = {
     rejouer: () => aller(0),
     quitter,
+    libelleQuitter: libelleRetour,
   };
 
   return (

@@ -3,10 +3,11 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "Carnet de route : scénarios de voyage personnalisables et présentation animée, en un seul fichier HTML",
+  "description": "Carnet de route : scénarios de voyage personnalisables, et export d'une visite animée en un fichier HTML",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc --noEmit && vite build && node scripts/renommer.mjs",
+    "dev": "npm run build:visite && vite",
+    "build:visite": "vite build --config vite.visite.config.ts",
+    "build": "tsc --noEmit && npm run build:visite && vite build && node scripts/renommer.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

@@ -1,15 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { calculerChronologie } from "./domaine/calcul";
 import { dupliquerScenario, nouveauScenario, scenarioExemple } from "./domaine/fabrique";
-import { charger, copiePossible, enregistrerCopie, exporterJson, importerJson, nomDeFichier, sauver, type Etat } from "./domaine/stockage";
+import { exporterVisite } from "./domaine/exportVisite";
+import { charger, exporterJson, importerJson, sauver, type Etat } from "./domaine/stockage";
 import type { Scenario } from "./domaine/types";
 import { Editeur, type ActionsEditeur } from "./editeur/Editeur";
-import { Presentation } from "./presentation/Presentation";
+import { Visite } from "./visite/Visite";
 
 export function App() {
   const [init] = useState(charger);
   const [etat, setEtat] = useState<Etat>(init.etat);
-  const [presente, setPresente] = useState(false);
+  const [apercu, setApercu] = useState(false);
   const [sauve, setSauve] = useState(true);
 
   // Sauvegarde automatique dans le navigateur, un quart de seconde après la dernière frappe.
@@ -41,15 +42,15 @@ export function App() {
         .catch((err: unknown) => window.alert(err instanceof Error ? err.message : "Import impossible."));
     },
     exporterJson: () => actif && exporterJson(actif),
-    enregistrerCopie: () => enregistrerCopie({ ...etat, actif: actif?.id ?? null }, actif ? nomDeFichier(actif.nom) : "carnet-de-route"),
     modifier: (s) => setEtat((e) => ({ ...e, scenarios: e.scenarios.map((x) => (x.id === s.id ? { ...s, modifieLe: Date.now() } : x)) })),
-    lancer: () => setPresente(true),
+    previsualiser: () => setApercu(true),
+    exporterVisite: () => actif && exporterVisite(actif),
   };
 
   return (
     <>
-      <Editeur etat={{ ...etat, actif: actif?.id ?? null }} actif={actif} chrono={chrono} sauve={sauve} copiePossible={copiePossible()} actions={actions} />
-      {presente && actif && chrono && <Presentation scenario={actif} chronologie={chrono} onQuitter={() => setPresente(false)} />}
+      <Editeur etat={{ ...etat, actif: actif?.id ?? null }} actif={actif} chrono={chrono} sauve={sauve} actions={actions} />
+      {apercu && actif && <Visite scenario={actif} onFermerApercu={() => setApercu(false)} />}
     </>
   );
 }

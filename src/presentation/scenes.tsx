@@ -41,6 +41,8 @@ export interface CoucheCarte {
 export interface Actions {
   rejouer: () => void;
   quitter: () => void;
+  /** Libellé du bouton de sortie du récapitulatif. */
+  libelleQuitter: string;
 }
 
 export interface Scene {
@@ -63,7 +65,7 @@ const majuscule = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 /** Espaces insécables : « La Mecque » ne se coupe jamais en fin de ligne. */
 const insecable = (s: string) => s.replace(/ /g, "\u00A0");
 /** Taille de titre dégressive : un nom long tient sur la largeur du panneau. */
-const tailleTitre = (texte: string, base: number) =>
+export const tailleTitre = (texte: string, base: number) =>
   Math.round(base * (texte.length <= 14 ? 1 : texte.length <= 18 ? 0.9 : texte.length <= 24 ? 0.8 : 0.68));
 /** Étiquette d'arrivée : « Aéroport de Médine » plutôt que son nom officiel. */
 const etiquetteArrivee = (depuis: Lieu, vers: Lieu) =>
@@ -257,7 +259,7 @@ function Eyebrow({ t, children, debut = 120 }: { t: number; children: ReactNode;
   );
 }
 
-function periode(c: Chronologie): string {
+export function periode(c: Chronologie): string {
   if (!c.depart) return "";
   const finLieu = c.segments[c.segments.length - 1]?.vers ?? c.depart;
   if (c.segments.length === 0) return `Le ${dateLongue(c.debut, c.depart.fuseau)} ${utcVersLocal(c.debut, c.depart.fuseau).date.slice(0, 4)}`;
@@ -679,7 +681,7 @@ function SceneFin({ t, s, c, actions }: { t: number; s: Scenario; c: Chronologie
             Rejouer la présentation
           </button>
           <button type="button" className="pz-bouton-discret" onClick={actions.quitter}>
-            Retour à l'éditeur
+            {actions.libelleQuitter}
           </button>
         </Apparait>
       </div>

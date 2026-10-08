@@ -19,9 +19,9 @@ export interface ActionsEditeur {
   supprimer: () => void;
   importer: (f: File) => void;
   exporterJson: () => void;
-  enregistrerCopie: () => void;
   modifier: (s: Scenario) => void;
-  lancer: () => void;
+  previsualiser: () => void;
+  exporterVisite: () => void;
 }
 
 const TYPES: TypeEtape[] = ["vol", "escale", "transfert", "sejour"];
@@ -31,40 +31,39 @@ export function Editeur({
   actif,
   chrono,
   sauve,
-  copiePossible,
   actions,
 }: {
   etat: Etat;
   actif: Scenario | null;
   chrono: Chronologie | null;
   sauve: boolean;
-  copiePossible: boolean;
   actions: ActionsEditeur;
 }) {
+  const pret = !!chrono?.depart;
   return (
     <div className="min-h-full">
       <header className="sticky top-0 z-20 flex h-16 items-center gap-4 border-b border-[#E7E1D6] bg-papier/90 px-5 backdrop-blur">
         <Logo />
         <div className="leading-tight">
           <p className="text-[15px] font-extrabold tracking-tight">Carnet de route</p>
-          <p className="text-xs text-slate-500">Scénarios de voyage et présentation animée</p>
+          <p className="text-xs text-slate-500">Scénarios de voyage et visite animée</p>
         </div>
         <div className="ml-auto flex items-center gap-3">
           <span className={`hidden items-center gap-1.5 text-xs md:inline-flex ${sauve ? "text-slate-500" : "text-amber-700"}`}>
             {sauve ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> : <TriangleAlert className="h-3.5 w-3.5" />}
-            {sauve ? "Enregistré dans ce navigateur" : "Sauvegarde impossible : enregistre une copie"}
+            {sauve ? "Enregistré dans ce navigateur" : "Sauvegarde impossible : exporte tes scénarios"}
           </span>
+          <button type="button" className="bouton !py-2 !px-4" onClick={actions.previsualiser} disabled={!pret} title="Voir la visite exactement comme tes proches la verront">
+            <Play className="h-4 w-4" /> Prévisualiser la visite
+          </button>
           <button
             type="button"
-            className="bouton"
-            onClick={actions.enregistrerCopie}
-            disabled={!copiePossible}
-            title="Télécharge ce fichier avec tous tes scénarios dedans : c'est ta sauvegarde, et le fichier à envoyer"
+            className="bouton-principal"
+            onClick={actions.exporterVisite}
+            disabled={!pret}
+            title="Télécharge un fichier HTML qui contient seulement la visite de ce scénario, à ouvrir ou à envoyer"
           >
-            <Download className="h-4 w-4" /> Enregistrer une copie
-          </button>
-          <button type="button" className="bouton-principal" onClick={actions.lancer} disabled={!chrono?.depart}>
-            <Play className="h-4 w-4 fill-current" /> Lancer la présentation
+            <Download className="h-4 w-4" /> Exporter la visite
           </button>
         </div>
       </header>
@@ -175,8 +174,8 @@ function ListeScenarios({ etat, actions }: { etat: Etat; actions: ActionsEditeur
         }}
       />
       <p className="text-xs leading-relaxed text-slate-500">
-        Les modifications sont gardées dans ce navigateur. « Enregistrer une copie » télécharge un fichier qui contient tous tes scénarios : garde-le
-        précieusement, ou envoie-le.
+        Tes scénarios sont gardés dans ce navigateur. Pour les mettre à l'abri ou les retrouver sur un autre ordinateur : Exporter, puis Importer.
+        Pour montrer le voyage : « Exporter la visite » crée un fichier à ouvrir ou à envoyer, qui ne contient que ce scénario.
       </p>
     </nav>
   );
