@@ -6,6 +6,7 @@ import { trouverLieu } from "../domaine/lieux";
 import type { Etat } from "../domaine/stockage";
 import { dateAvecAnnee, dateCourte, heureLocale } from "../domaine/temps";
 import type { Etape, Lieu, Scenario, TypeEtape } from "../domaine/types";
+import type { Images } from "../domaine/stockage";
 import { CarteEtape, STYLE_TYPE } from "./CarteEtape";
 import { FeuilleDeRoute } from "./FeuilleDeRoute";
 import { SelecteurLieu } from "./SelecteurLieu";
@@ -31,12 +32,16 @@ export function Editeur({
   actif,
   chrono,
   sauve,
+  images,
+  ajouterPhotos,
   actions,
 }: {
   etat: Etat;
   actif: Scenario | null;
   chrono: Chronologie | null;
   sauve: boolean;
+  images: Images;
+  ajouterPhotos: (scenarioId: string, etapeId: string, fichiers: File[]) => Promise<string[]>;
   actions: ActionsEditeur;
 }) {
   const pret = !!chrono?.depart;
@@ -72,7 +77,14 @@ export function Editeur({
         <ListeScenarios etat={etat} actions={actions} />
         {actif && chrono ? (
           <>
-            <EditionScenario key={actif.id} s={actif} c={chrono} modifier={actions.modifier} />
+            <EditionScenario
+              key={actif.id}
+              s={actif}
+              c={chrono}
+              modifier={actions.modifier}
+              images={images}
+              ajouterPhotos={(etapeId, fichiers) => ajouterPhotos(actif.id, etapeId, fichiers)}
+            />
             <aside className="lg:col-start-2 xl:col-start-auto xl:sticky xl:top-[84px] xl:max-h-[calc(100vh-104px)] xl:self-start xl:overflow-y-auto">
               <FeuilleDeRoute c={chrono} />
             </aside>
@@ -174,8 +186,9 @@ function ListeScenarios({ etat, actions }: { etat: Etat; actions: ActionsEditeur
         }}
       />
       <p className="text-xs leading-relaxed text-slate-500">
-        Tes scénarios sont gardés dans ce navigateur. Pour les mettre à l'abri ou les retrouver sur un autre ordinateur : Exporter, puis Importer.
-        Pour montrer le voyage : « Exporter la visite » crée un fichier à ouvrir ou à envoyer, qui ne contient que ce scénario.
+        Tes scénarios et leurs photos restent enregistrés dans ce navigateur, y compris ceux que tu importes. Pour les mettre à l'abri ou les
+        retrouver sur un autre ordinateur : Exporter (photos comprises), puis Importer. Pour montrer le voyage : « Exporter la visite » crée un
+        fichier à ouvrir ou à envoyer, qui ne contient que ce scénario.
       </p>
     </nav>
   );
@@ -194,7 +207,19 @@ function Section({ titre, children, aside }: { titre: string; children: ReactNod
   );
 }
 
-function EditionScenario({ s, c, modifier }: { s: Scenario; c: Chronologie; modifier: (s: Scenario) => void }) {
+function EditionScenario({
+  s,
+  c,
+  modifier,
+  images,
+  ajouterPhotos,
+}: {
+  s: Scenario;
+  c: Chronologie;
+  modifier: (s: Scenario) => void;
+  images: Images;
+  ajouterPhotos: (etapeId: string, fichiers: File[]) => Promise<string[]>;
+}) {
   const [insertion, setInsertion] = useState<number | null>(null);
   const [annulable, setAnnulable] = useState<{ etape: Etape; index: number } | null>(null);
   useEffect(() => {
@@ -324,6 +349,8 @@ function EditionScenario({ s, c, modifier }: { s: Scenario; c: Chronologie; modi
                   majEtapes(s.etapes.filter((x) => x.id !== e.id));
                 }}
                 onAjouterLieu={ajouterLieu}
+                images={images}
+                ajouterPhotos={(fichiers) => ajouterPhotos(e.id, fichiers)}
               />
             </div>
           ))}

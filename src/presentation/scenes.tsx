@@ -16,7 +16,8 @@ import {
   localVersUtc,
   utcVersLocal,
 } from "../domaine/temps";
-import type { EtapeEscale, EtapeSejour, EtapeTransfert, EtapeVol, Lieu, ModeTransfert, Scenario } from "../domaine/types";
+import type { Images } from "../domaine/stockage";
+import type { Etape, EtapeEscale, EtapeSejour, EtapeTransfert, EtapeVol, Lieu, ModeTransfert, Scenario } from "../domaine/types";
 import { barycentre, cadrer, interpolerCamera, type ArcCarte, type Camera, type LonLat, type PointCarte } from "./Carte";
 import { Apparait, compteur, easeInOutCubic, fenetre, SousTitre, TitreAnime, VITESSE_ECRITURE } from "./elements";
 import { a, de } from "../domaine/francais";
@@ -83,7 +84,7 @@ function travelling(debut: Camera, fin: Camera, duree = 2400) {
   return (t: number) => interpolerCamera(debut, fin, easeInOutCubic(fenetre(t, 0, duree)));
 }
 
-export function construireScenes(s: Scenario, c: Chronologie): Scene[] {
+export function construireScenes(s: Scenario, c: Chronologie, images: Images): Scene[] {
   const scenes: Scene[] = [];
   if (!c.depart) return scenes;
   const depart = c.depart;
@@ -157,9 +158,13 @@ export function construireScenes(s: Scenario, c: Chronologie): Scene[] {
     if (e.type === "vol" || e.type === "transfert") {
       const estVol = e.type === "vol";
       const fin = cadrer([pos(g.de), pos(g.vers)], SCENE.rayonBase, SCENE.rayonVue, estVol ? 6 : 1.6);
-      const duree = Math.max(estVol ? 12_500 : 10_500, 2_600 + dureeLecture(e.commentaire) + 3_500);
+      const dureeBase = Math.max(estVol ? 12_500 : 10_500, 2_600 + dureeLecture(e.commentaire) + 3_500);
       const debutTrace = 1_700;
-      const dureeTrace = Math.min(duree - debutTrace - 2_500, estVol ? 8_000 : 5_500);
+      const dureeTrace = Math.min(dureeBase - debutTrace - 2_500, estVol ? 8_000 : 5_500);
+      // Les photos arrivent une fois le trajet tracé : on est arrivé.
+      const photos = photosDe(e, images);
+      const debutPhotos = debutTrace + dureeTrace + 300;
+      const duree = photos.length > 0 ? Math.max(dureeBase, debutPhotos + photos.length * PAR_PHOTO + 800) : dureeBase;
       const progression = (t: number) => easeInOutCubic(fenetre(t, debutTrace, dureeTrace));
       const numero = vols.indexOf(g) + 1;
       scenes.push({
@@ -180,14 +185,22 @@ export function construireScenes(s: Scenario, c: Chronologie): Scene[] {
           ],
           pays: paysDe(lieuxJusqua(i)),
         }),
-        rendu: (t) => <SceneTrajet t={t} g={g} e={e} numero={numero} total={vols.length} progression={progression(t)} />,
+        rendu: (t) => (
+          <>
+            <SceneTrajet t={t} g={g} e={e} numero={numero} total={vols.length} progression={progression(t)} />
+            <Diaporama t={t} debut={debutPhotos} photos={photos} />
+          </>
+        ),
       });
       camera = fin;
       return;
     }
 
     const fin = cadrer([pos(g.de)], SCENE.rayonBase, SCENE.rayonVue, e.type === "escale" ? 7 : 4.5);
-    const duree = Math.max(e.type === "escale" ? 9_500 : 11_000, 2_400 + dureeLecture(e.commentaire) + 3_500);
+    const dureeBase = Math.max(e.type === "escale" ? 9_500 : 11_000, 2_400 + dureeLecture(e.commentaire) + 3_500);
+    const photos = photosDe(e, images);
+    const debutPhotos = 1_500;
+    const duree = photos.length > 0 ? Math.max(dureeBase, debutPhotos + photos.length * PAR_PHOTO + 1_500) : dureeBase;
     scenes.push({
       cle: `etape-${e.id}`,
       chapitre: `${e.type === "escale" ? "Escale" : "Séjour"} · ${g.de.nom}`,
@@ -199,7 +212,12 @@ export function construireScenes(s: Scenario, c: Chronologie): Scene[] {
         points: [...pointsDiscrets(vusAvant), { pos: pos(g.de), etiquette: g.de.nom, actif: true, priorite: 9 }],
         pays: paysDe(lieuxJusqua(i)),
       }),
-      rendu: (t) => (e.type === "escale" ? <SceneEscale t={t} g={g} e={e} /> : <SceneSejour t={t} g={g} e={e} />),
+      rendu: (t) => (
+        <>
+          {e.type === "escale" ? <SceneEscale t={t} g={g} e={e} /> : <SceneSejour t={t} g={g} e={e} />}
+          <Diaporama t={t} debut={debutPhotos} photos={photos} />
+        </>
+      ),
     });
     camera = fin;
   });
@@ -250,6 +268,76 @@ export function construireScenes(s: Scenario, c: Chronologie): Scene[] {
 /* ════════════════════════════════════════════════════════════════════
    Rendus
    ════════════════════════════════════════════════════════════════════ */
+
+/* ── Photos d'une étape ─────────────────────────────────────────────── */
+interface Photo {
+  src: string;
+  legende: string;
+}
+
+/** Temps d'affichage de chaque photo du diaporama. */
+const PAR_PHOTO = 4_500;
+
+function photosDe(e: Etape, images: Images): Photo[] {
+  return e.images.flatMap((i) => {
+    const src = images.get(i.id);
+    return src ? [{ src, legende: i.legende }] : [];
+  });
+}
+
+/**
+ * Diaporama à droite de la scène : chaque photo entre en fondu par-dessus
+ * la précédente et avance doucement vers l'objectif. Fond flouté de la
+ * même photo : un portrait comme un paysage remplit le cadre sans être
+ * rogné.
+ */
+function Diaporama({ t, debut, photos }: { t: number; debut: number; photos: Photo[] }) {
+  if (photos.length === 0 || t < debut) return null;
+  const courante = Math.min(photos.length - 1, Math.floor((t - debut) / PAR_PHOTO));
+  const entree = fenetre(t, debut, 800);
+  return (
+    <div
+      className="absolute"
+      style={{
+        left: 870,
+        top: 112,
+        width: 640,
+        opacity: fenetre(t, debut, 500),
+        transform: `translateX(${(1 - easeInOutCubic(entree)) * 70}px) rotate(1.2deg)`,
+      }}
+    >
+      <div
+        className="relative overflow-hidden rounded-[20px] border-[6px] border-white/90"
+        style={{ height: 450, background: "#0B1426", boxShadow: "0 40px 100px rgba(0,0,0,0.6)" }}
+      >
+        {photos.slice(0, courante + 2).map((p, i) => {
+          const debutPhoto = debut + i * PAR_PHOTO;
+          const opacite = i === 0 ? 1 : fenetre(t, debutPhoto, 800);
+          if (opacite <= 0) return null;
+          const zoom = 1 + 0.06 * Math.min(1, Math.max(0, t - debutPhoto) / (PAR_PHOTO + 800));
+          return (
+            <div key={i} className="absolute inset-0" style={{ opacity: opacite }}>
+              <img src={p.src} alt="" className="absolute inset-0 h-full w-full object-cover" style={{ filter: "blur(26px) brightness(0.5)", transform: "scale(1.2)" }} />
+              <img src={p.src} alt={p.legende} className="absolute inset-0 h-full w-full object-contain" style={{ transform: `scale(${zoom})` }} />
+            </div>
+          );
+        })}
+      </div>
+      <div className="mt-4 flex items-start justify-between gap-6">
+        <p key={courante} className="min-h-[30px] text-[22px] font-medium leading-snug text-white/90" style={{ opacity: fenetre(t, debut + courante * PAR_PHOTO + 200, 600) }}>
+          {photos[courante]!.legende}
+        </p>
+        {photos.length > 1 && (
+          <div className="mt-2 flex shrink-0 gap-1.5">
+            {photos.map((_, i) => (
+              <span key={i} className="h-2 w-2 rounded-full" style={{ background: i === courante ? OR : "rgba(255,255,255,0.3)" }} />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function Eyebrow({ t, children, debut = 120 }: { t: number; children: ReactNode; debut?: number }) {
   return (
@@ -540,7 +628,7 @@ function SceneSejour({ t, g, e }: { t: number; g: Segment; e: EtapeSejour }) {
   const titreSejour = `${n} nuit${n > 1 ? "s" : ""} ${insecable(a(g.de.nom))}`;
   return (
     <>
-      <div className="absolute left-[100px] top-[118px] w-[780px]">
+      <div className="absolute left-[100px] top-[118px] w-[740px]">
         <Eyebrow t={t}>Séjour · {g.de.nom}</Eyebrow>
         <TitreAnime t={t} texte={titreSejour} className="mt-4" style={{ fontSize: tailleTitre(titreSejour, 76) }} />
         <div className="mt-8 flex flex-wrap gap-2.5">

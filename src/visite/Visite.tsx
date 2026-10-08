@@ -3,6 +3,7 @@ import { ArrowLeft, Clock3, Eye, Globe2, Moon, Plane, Play, Route } from "lucide
 import { calculerChronologie, type Chronologie } from "../domaine/calcul";
 import { itineraire } from "../domaine/programme";
 import { formatKm } from "../domaine/temps";
+import type { Images } from "../domaine/stockage";
 import type { Lieu, Scenario } from "../domaine/types";
 import { cadrer, Carte, type ArcCarte, type LonLat, type PointCarte } from "../presentation/Carte";
 import { Apparait, Etoiles, TitreAnime } from "../presentation/elements";
@@ -14,13 +15,15 @@ import { construireScenes, OR, periode, SCENE, tailleTitre, TURQUOISE } from "..
    en plein écran. Le même composant sert au fichier de visite exporté et à
    l'aperçu dans le carnet : ce qu'on prévisualise est ce qu'on envoie. */
 
-export function Visite({ scenario, onFermerApercu }: { scenario: Scenario; onFermerApercu?: () => void }) {
+export function Visite({ scenario, images, onFermerApercu }: { scenario: Scenario; images: Images; onFermerApercu?: () => void }) {
   const chrono = useMemo(() => calculerChronologie(scenario), [scenario]);
   const [lancee, setLancee] = useState(false);
   if (lancee) {
-    return <Presentation scenario={scenario} chronologie={chrono} libelleRetour="Retour à l'accueil" onQuitter={() => setLancee(false)} />;
+    return (
+      <Presentation scenario={scenario} chronologie={chrono} images={images} libelleRetour="Retour à l'accueil" onQuitter={() => setLancee(false)} />
+    );
   }
-  return <Accueil s={scenario} c={chrono} onLancer={() => setLancee(true)} onFermerApercu={onFermerApercu} />;
+  return <Accueil s={scenario} c={chrono} images={images} onLancer={() => setLancee(true)} onFermerApercu={onFermerApercu} />;
 }
 
 /** Millisecondes écoulées depuis l'affichage, image par image. */
@@ -41,7 +44,19 @@ function useHorloge(): number {
 
 const pos = (l: Lieu): LonLat => [l.lon, l.lat];
 
-function Accueil({ s, c, onLancer, onFermerApercu }: { s: Scenario; c: Chronologie; onLancer: () => void; onFermerApercu?: () => void }) {
+function Accueil({
+  s,
+  c,
+  images,
+  onLancer,
+  onFermerApercu,
+}: {
+  s: Scenario;
+  c: Chronologie;
+  images: Images;
+  onLancer: () => void;
+  onFermerApercu?: () => void;
+}) {
   const t = useHorloge();
   const echelle = useEchelleScene();
 
@@ -57,7 +72,7 @@ function Accueil({ s, c, onLancer, onFermerApercu }: { s: Scenario; c: Chronolog
     const arcs: ArcCarte[] = c.segments
       .filter((g) => g.etape.type === "vol" || g.etape.type === "transfert")
       .map((g) => ({ de: pos(g.de), vers: pos(g.vers), progression: 1, couleur: g.etape.type === "vol" ? OR : TURQUOISE, sol: g.etape.type === "transfert" }));
-    const duree = construireScenes(s, c).reduce((a, sc) => a + (Number.isFinite(sc.duree) ? sc.duree : 0), 0);
+    const duree = construireScenes(s, c, images).reduce((a, sc) => a + (Number.isFinite(sc.duree) ? sc.duree : 0), 0);
     return {
       camera: cadrer(lieux.map(pos), SCENE.rayonBase, SCENE.rayonVue, 18),
       arcs,
@@ -65,7 +80,7 @@ function Accueil({ s, c, onLancer, onFermerApercu }: { s: Scenario; c: Chronolog
       pays: new Set(lieux.map((l) => l.m49).filter((m): m is string => !!m)),
       minutes: Math.max(1, Math.round(duree / 60_000)),
     };
-  }, [s, c]);
+  }, [s, c, images]);
 
   // Le globe se balance doucement autour du trajet (rafraîchi 20 fois par seconde).
   const tCarte = Math.floor(t / 50) * 50;

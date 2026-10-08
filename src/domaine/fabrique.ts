@@ -1,6 +1,6 @@
 import type { Etape, Scenario, TypeEtape } from "./types";
 
-type SansId<T> = T extends unknown ? Omit<T, "id"> : never;
+type SansId<T> = T extends unknown ? Omit<T, "id" | "images"> : never;
 
 export function nouvelId(prefixe: string): string {
   return `${prefixe}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
@@ -10,13 +10,13 @@ export function nouvelleEtape(type: TypeEtape): Etape {
   const id = nouvelId("e");
   switch (type) {
     case "vol":
-      return { id, type, vers: "", duree: 0, compagnie: "", numero: "", commentaire: "" };
+      return { id, type, vers: "", duree: 0, compagnie: "", numero: "", commentaire: "", images: [] };
     case "escale":
-      return { id, type, duree: 120, intitule: "Correspondance", commentaire: "" };
+      return { id, type, duree: 120, intitule: "Correspondance", commentaire: "", images: [] };
     case "transfert":
-      return { id, type, vers: "", mode: "bus", duree: 0, commentaire: "" };
+      return { id, type, vers: "", mode: "bus", duree: 0, commentaire: "", images: [] };
     case "sejour":
-      return { id, type, nuits: 3, heureDepart: "12:00", hebergement: "", commentaire: "" };
+      return { id, type, nuits: 3, heureDepart: "12:00", hebergement: "", commentaire: "", images: [] };
   }
 }
 
@@ -48,7 +48,7 @@ export function dupliquerScenario(s: Scenario): Scenario {
 
 /** Scénario d'exemple : une Omra au départ de Paris, escale à Abu Dhabi. */
 export function scenarioExemple(): Scenario {
-  const e = (x: SansId<Etape>): Etape => ({ ...x, id: nouvelId("e") }) as Etape;
+  const e = (x: SansId<Etape>): Etape => ({ ...x, id: nouvelId("e"), images: [] }) as Etape;
   return {
     id: nouvelId("s"),
     nom: "Omra en famille — avril 2027",

@@ -1,13 +1,17 @@
+import { demanderPersistance, ecrireEtatBase, lireEtatBase, lireImages, nettoyerImages } from "./base";
 import { nouvelId, scenarioExemple } from "./fabrique";
 import type { Etape, Lieu, Scenario } from "./types";
 
 /* Où vivent les scénarios.
 
-   Le carnet les garde dans le navigateur (localStorage) et les sauvegarde
-   à chaque modification. Pour les mettre à l'abri ou les passer sur un
-   autre ordinateur : Exporter / Importer (.json). Ce qu'on montre aux
-   proches, c'est la visite : un fichier HTML à part qui ne contient que le
-   scénario choisi (voir exportVisite.ts). */
+   Le carnet les garde dans la mémoire du navigateur, sauvegardés à chaque
+   modification : dans IndexedDB (scénarios et photos, voir base.ts) et,
+   en double, dans localStorage (scénarios seuls). Un scénario importé y
+   reste donc enregistré, comme ceux créés à la main. Pour les mettre à
+   l'abri ou les passer sur un autre ordinateur : Exporter / Importer
+   (.json, photos comprises). Ce qu'on montre aux proches, c'est la
+   visite : un fichier HTML à part qui ne contient que le scénario choisi
+   (voir exportVisite.ts). */
 
 const CLE_BASE = "carnet-de-route.v1";
 /** Les « copies » de la v1 embarquaient leurs scénarios : elles s'ouvrent
@@ -19,6 +23,14 @@ export const ID_VISITE = "donnees-visite";
 export interface Etat {
   scenarios: Scenario[];
   actif: string | null;
+}
+
+/** Photos par identifiant, en data URL (JPEG). */
+export type Images = Map<string, string>;
+
+interface EtatDate extends Etat {
+  /** Horodatage de la sauvegarde, pour départager les deux mémoires. */
+  sauveLe: number;
 }
 
 interface CopieV1 extends Etat {
@@ -38,48 +50,76 @@ function lireCopieV1(): CopieV1 | null {
   }
 }
 
+function normaliserEtat(brut: unknown): EtatDate | null {
+  if (!brut || typeof brut !== "object") return null;
+  const e = brut as Partial<EtatDate>;
+  const scenarios = (Array.isArray(e.scenarios) ? e.scenarios : []).map(normaliserScenario).filter((s): s is Scenario => s != null);
+  if (scenarios.length === 0) return null;
+  const actif = scenarios.some((s) => s.id === e.actif) ? e.actif! : scenarios[0]!.id;
+  return { scenarios, actif, sauveLe: typeof e.sauveLe === "number" ? e.sauveLe : 0 };
+}
+
+/** Identifiants des photos utilisées par une liste de scénarios. */
+export function imagesUtilisees(scenarios: Scenario[]): Set<string> {
+  const ids = new Set<string>();
+  for (const s of scenarios) for (const e of s.etapes) for (const i of e.images) ids.add(i.id);
+  return ids;
+}
+
 export interface Chargement {
   etat: Etat;
+  images: Images;
   cle: string;
 }
 
-export function charger(): Chargement {
+export async function charger(): Promise<Chargement> {
   const copie = lireCopieV1();
   const cle = copie ? `${CLE_BASE}.${copie.exportId}` : CLE_BASE;
+  let local: EtatDate | null = null;
   try {
-    const brut = localStorage.getItem(cle);
-    if (brut) {
-      const e = JSON.parse(brut) as Partial<Etat>;
-      const scenarios = (e.scenarios ?? []).map(normaliserScenario).filter((s): s is Scenario => s != null);
-      if (scenarios.length > 0) {
-        const actif = scenarios.some((s) => s.id === e.actif) ? e.actif! : scenarios[0]!.id;
-        return { etat: { scenarios, actif }, cle };
-      }
-    }
+    local = normaliserEtat(JSON.parse(localStorage.getItem(cle) ?? "null"));
   } catch {
-    /* stockage indisponible ou illisible : on repart du fichier */
+    /* localStorage indisponible ou illisible */
   }
-  if (copie) return { etat: { scenarios: copie.scenarios, actif: copie.actif }, cle };
-  const exemple = scenarioExemple();
-  return { etat: { scenarios: [exemple], actif: exemple.id }, cle };
+  const base = normaliserEtat(await lireEtatBase(cle));
+  // La plus récente des deux mémoires l'emporte.
+  const memoire = base && (!local || base.sauveLe >= local.sauveLe) ? base : local;
+  const etat: Etat = memoire
+    ? { scenarios: memoire.scenarios, actif: memoire.actif }
+    : copie
+      ? { scenarios: copie.scenarios, actif: copie.actif }
+      : (() => {
+          const exemple = scenarioExemple();
+          return { scenarios: [exemple], actif: exemple.id };
+        })();
+  const images = await lireImages(imagesUtilisees(etat.scenarios));
+  demanderPersistance();
+  void nettoyerImages((etats) => imagesUtilisees(etats.flatMap((x) => normaliserEtat(x)?.scenarios ?? [])));
+  return { etat, images, cle };
 }
 
-/** Sauvegarde dans le navigateur ; renvoie false si elle a échoué. */
-export function sauver(cle: string, etat: Etat): boolean {
+/** Sauvegarde dans le navigateur ; renvoie false si elle a entièrement échoué. */
+export async function sauver(cle: string, etat: Etat): Promise<boolean> {
+  const date: EtatDate = { ...etat, sauveLe: Date.now() };
+  let local = false;
   try {
-    localStorage.setItem(cle, JSON.stringify(etat));
-    return true;
+    localStorage.setItem(cle, JSON.stringify(date));
+    local = true;
   } catch {
-    return false;
+    /* plein ou indisponible : IndexedDB prend le relais */
   }
+  const base = await ecrireEtatBase(cle, date);
+  return base || local;
 }
 
-/** Scénario embarqué dans un fichier de visite, ou null. */
-export function lireVisite(): Scenario | null {
+/** Contenu d'un fichier de visite : le scénario et ses photos, ou null. */
+export function lireVisite(): { scenario: Scenario; images: Images } | null {
   const el = document.getElementById(ID_VISITE);
   if (!el?.textContent) return null;
   try {
-    return normaliserScenario((JSON.parse(el.textContent) as { scenario?: unknown }).scenario);
+    const brut = JSON.parse(el.textContent) as { scenario?: unknown; images?: unknown };
+    const scenario = normaliserScenario(brut.scenario);
+    return scenario ? { scenario, images: lireImagesJson(brut.images) } : null;
   } catch {
     return null;
   }
@@ -109,18 +149,41 @@ export function telecharger(contenu: Blob, nom: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
-export function exporterJson(s: Scenario): void {
-  const contenu = JSON.stringify({ format: "carnet-de-route", version: 1, scenario: s }, null, 2);
+/** Les photos d'un scénario, prêtes à être écrites dans un fichier. */
+export function imagesDuScenario(s: Scenario, images: Images): Record<string, string> {
+  const r: Record<string, string> = {};
+  for (const id of imagesUtilisees([s])) {
+    const donnees = images.get(id);
+    if (donnees) r[id] = donnees;
+  }
+  return r;
+}
+
+function lireImagesJson(x: unknown): Images {
+  const r: Images = new Map();
+  if (x && typeof x === "object") {
+    for (const [id, donnees] of Object.entries(x as Record<string, unknown>)) {
+      if (typeof donnees === "string" && donnees.startsWith("data:image/")) r.set(id, donnees);
+    }
+  }
+  return r;
+}
+
+export function exporterJson(s: Scenario, images: Images): void {
+  const contenu = JSON.stringify({ format: "carnet-de-route", version: 2, scenario: s, images: imagesDuScenario(s, images) }, null, 2);
   telecharger(new Blob([contenu], { type: "application/json" }), `${nomDeFichier(s.nom)}.json`);
 }
 
-/** Lit un fichier .json exporté ; renvoie le scénario avec de nouveaux ids. */
-export async function importerJson(fichier: File): Promise<Scenario> {
-  const brut = JSON.parse(await fichier.text()) as { scenario?: unknown } | unknown;
-  const candidat = brut && typeof brut === "object" && "scenario" in brut ? (brut as { scenario: unknown }).scenario : brut;
-  const s = normaliserScenario(candidat);
+/** Lit un fichier .json exporté : le scénario (nouveaux ids) et ses photos. */
+export async function importerJson(fichier: File): Promise<{ scenario: Scenario; images: Images }> {
+  const brut = JSON.parse(await fichier.text()) as { scenario?: unknown; images?: unknown } | unknown;
+  const enveloppe = brut && typeof brut === "object" && "scenario" in brut ? (brut as { scenario: unknown; images?: unknown }) : null;
+  const s = normaliserScenario(enveloppe ? enveloppe.scenario : brut);
   if (!s) throw new Error("Ce fichier ne contient pas de scénario de voyage.");
-  return { ...s, id: nouvelId("s"), etapes: s.etapes.map((e) => ({ ...e, id: nouvelId("e") })), modifieLe: Date.now() };
+  return {
+    scenario: { ...s, id: nouvelId("s"), etapes: s.etapes.map((e) => ({ ...e, id: nouvelId("e") })), modifieLe: Date.now() },
+    images: lireImagesJson(enveloppe?.images),
+  };
 }
 
 /* ── Validation : tout ce qui vient d'un fichier ou du navigateur ───── */
@@ -131,7 +194,12 @@ const num = (v: unknown, defaut = 0) => (typeof v === "number" && Number.isFinit
 function normaliserEtape(x: unknown): Etape | null {
   if (!x || typeof x !== "object") return null;
   const o = x as Record<string, unknown>;
-  const base = { id: str(o.id) || nouvelId("e"), commentaire: str(o.commentaire) };
+  const images = Array.isArray(o.images)
+    ? o.images
+        .filter((i): i is Record<string, unknown> => !!i && typeof i === "object" && typeof (i as Record<string, unknown>).id === "string")
+        .map((i) => ({ id: str(i.id), legende: str(i.legende) }))
+    : [];
+  const base = { id: str(o.id) || nouvelId("e"), commentaire: str(o.commentaire), images };
   switch (o.type) {
     case "vol":
       return { ...base, type: "vol", vers: str(o.vers), duree: num(o.duree), compagnie: str(o.compagnie), numero: str(o.numero) };

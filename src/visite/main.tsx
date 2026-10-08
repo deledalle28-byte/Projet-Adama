@@ -5,13 +5,14 @@ import { lireVisite } from "../domaine/stockage";
 import { Visite } from "./Visite";
 import "../styles.css";
 
-// Le scénario est glissé dans le fichier au moment de l'export. Sans lui
-// (gabarit ouvert tel quel, développement), on montre l'exemple.
-const scenario = lireVisite() ?? scenarioExemple();
+// Le scénario et ses photos sont glissés dans le fichier au moment de
+// l'export. Sans eux (gabarit ouvert tel quel, développement), on montre
+// l'exemple.
+const { scenario, images } = lireVisite() ?? { scenario: scenarioExemple(), images: new Map<string, string>() };
 document.title = `${scenario.nom || "Voyage"} — la visite`;
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <Visite scenario={scenario} />
+    <Visite scenario={scenario} images={images} />
   </StrictMode>,
 );

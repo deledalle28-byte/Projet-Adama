@@ -28,9 +28,17 @@ export interface Lieu {
 
 export type ModeTransfert = "bus" | "train" | "voiture" | "taxi" | "pied";
 
+/** Photo d'une étape. Le contenu de l'image est rangé à part (voir
+    base.ts) : le scénario n'en garde que l'identifiant et la légende. */
+export interface ImageEtape {
+  id: string;
+  legende: string;
+}
+
 interface EtapeBase {
   id: string;
   commentaire: string;
+  images: ImageEtape[];
 }
 
 export interface EtapeVol extends EtapeBase {

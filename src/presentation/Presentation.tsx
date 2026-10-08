@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Pause, Play, X } from "lucide-react";
 import type { Chronologie } from "../domaine/calcul";
+import type { Images } from "../domaine/stockage";
 import type { Scenario } from "../domaine/types";
 import { Carte } from "./Carte";
 import { clamp01, Etoiles } from "./elements";
@@ -26,16 +27,19 @@ export function useEchelleScene(): number {
 export function Presentation({
   scenario,
   chronologie,
+  images,
   onQuitter,
   libelleRetour,
 }: {
   scenario: Scenario;
   chronologie: Chronologie;
+  /** Photos des étapes, par identifiant. */
+  images: Images;
   onQuitter: () => void;
   /** Bouton de sortie du récapitulatif, ex. « Retour à l'accueil ». */
   libelleRetour: string;
 }) {
-  const scenes = useMemo(() => construireScenes(scenario, chronologie), [scenario, chronologie]);
+  const scenes = useMemo(() => construireScenes(scenario, chronologie, images), [scenario, chronologie, images]);
   const [idx, setIdx] = useState(0);
   const [t, setT] = useState(0);
   const [pause, setPause] = useState(false);

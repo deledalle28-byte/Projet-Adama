@@ -79,7 +79,7 @@ describe("alertes", () => {
   it("signale un vol qui part d'une ville et une correspondance serrée", () => {
     const s = scenarioExemple();
     (s.etapes[1] as EtapeEscale).duree = 45;
-    s.etapes.splice(5, 0, { id: "x", type: "vol", vers: "aero-MED", duree: 60, compagnie: "", numero: "", commentaire: "" });
+    s.etapes.splice(5, 0, { id: "x", type: "vol", vers: "aero-MED", duree: 60, compagnie: "", numero: "", commentaire: "", images: [] });
     const messages = calculerChronologie(s).alertes.map((a) => a.message);
     expect(messages.some((m) => m.includes("moins d'une heure"))).toBe(true);
     expect(messages.some((m) => m.includes("On ne prend pas l'avion à La Mecque"))).toBe(true);

@@ -4,6 +4,8 @@ import { trouverLieu } from "../domaine/lieux";
 import { LIBELLE_MODE } from "../domaine/programme";
 import { dateCourte, ecartJours, formatDecalage, formatDuree, formatKm, heureLocale, utcVersLocal } from "../domaine/temps";
 import type { Etape, Lieu, ModeTransfert, Scenario, TypeEtape } from "../domaine/types";
+import type { Images } from "../domaine/stockage";
+import { PhotosEtape, type AjouterPhotos } from "./PhotosEtape";
 import { SelecteurLieu } from "./SelecteurLieu";
 import { a } from "../domaine/francais";
 
@@ -62,6 +64,8 @@ export function CarteEtape({
   onDeplacer,
   onSupprimer,
   onAjouterLieu,
+  images,
+  ajouterPhotos,
 }: {
   etape: Etape;
   numero: number;
@@ -76,6 +80,8 @@ export function CarteEtape({
   onDeplacer: (sens: -1 | 1) => void;
   onSupprimer: () => void;
   onAjouterLieu: (l: Lieu) => void;
+  images: Images;
+  ajouterPhotos: AjouterPhotos;
 }) {
   const style = STYLE_TYPE[etape.type];
   const champ = (nom: string) => `${etape.id}-${nom}`;
@@ -218,6 +224,10 @@ export function CarteEtape({
             placeholder="Ce que les proches doivent savoir sur cette étape…"
           />
         </label>
+
+        <div className="sm:col-span-2">
+          <PhotosEtape photos={etape.images} images={images} onChange={(photos) => onChange({ ...etape, images: photos })} ajouterPhotos={ajouterPhotos} />
+        </div>
       </div>
 
       {segment && <div className="border-t border-[#EFEAE1] bg-[#FBF9F5] px-4 py-2.5 text-sm text-slate-600">{horaire(segment)}</div>}
